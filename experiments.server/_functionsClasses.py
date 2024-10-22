@@ -201,6 +201,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     )
 
     ds = multiDHG1428.datasets(ds_directory, verbose=False)
+    print(ds)
     if return_dls:
         dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=e_seed_worker, generator=e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
         # clear_output(wait=False)
