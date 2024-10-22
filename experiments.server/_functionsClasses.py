@@ -201,7 +201,6 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     )
 
     ds = multiDHG1428.datasets(ds_directory, verbose=False)
-    print(ds)
     if return_dls:
         dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=e_seed_worker, generator=e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
         # clear_output(wait=False)
@@ -550,7 +549,7 @@ class end2endTunerModel(Module):
 
         self.multiVOsBody = create_body(models.resnet34(pretrained=True), cut=None)
         self.multiVOsHead = create_head(nf=num_features_model(self.multiVOsBody), n_out=len(dls_vocab))
-        self.tunerBody = create_body(arch=archTuner, cut=None)
+        self.tunerBody = create_body(archTuner, cut=None)
         self.tunerHead = create_head(nf=num_features_model(self.tunerBody), n_out=len(dls_vocab))
 
         self.item_tfms = [Resize(size=tuner_img_sz, method=ResizeMethod.Squish), ToTensor()]
