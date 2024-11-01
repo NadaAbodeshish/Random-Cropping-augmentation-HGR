@@ -162,17 +162,22 @@ def get_gesture_sequences(path):
     unique_paths = set()
     
     for file in files:
-        parent_folder = file.parent  # f<num>s<num>e<num> or aug_n folder
-        # Check if the parent is an aug_n folder and if so, add it directly
-        if "aug_" in parent_folder.name:
+        parent_folder = file.parent
+        # Check if the folder is in 'train' or 'valid' by its structure
+        if "train" in str(path) and "aug_" in parent_folder.name:
             unique_paths.add(parent_folder)
-        else:
-            # Otherwise, check for aug_n subdirectories and add those
+        elif "train" in str(path):
+            # If in 'train' and no aug_n folders found, add any available aug_n subfolders
             for aug_folder in parent_folder.glob("aug_*"):
                 unique_paths.add(aug_folder)
+        else:
+            # In 'valid', add the gesture instance folder directly (no augmentation)
+            unique_paths.add(parent_folder)
+
+    if not unique_paths:
+        print("Warning: No gesture sequences found. Check the folder structure and paths.")
 
     return L(unique_paths)
-
 
 
 def get_orientation_images(o):
