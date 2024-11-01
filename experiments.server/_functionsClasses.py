@@ -157,9 +157,17 @@ class e2eTunerImageTuples(fastuple):
 def e2eTunerImageTupleBlock():
     return TransformBlock(type_tfms=e2eTunerImageTuples.create, batch_tfms=IntToFloatTensor)
 
+import re
+
 def get_gesture_sequences(path):
-    files = get_image_files(path)
-    return L(dict.fromkeys([f.parent for f in files]))
+    gesture_paths = []
+    # Use regex to match folders with format like f1s1e1, f11s11e11, etc.
+    for gesture_instance in path.glob("*"):
+        if re.match(r"^f\d+s\d+e\d+$", gesture_instance.name):
+            for aug_folder in gesture_instance.glob("aug_*"):
+                gesture_paths.append(aug_folder)
+    return L(dict.fromkeys(gesture_paths))
+
 
 def get_orientation_images(o):
     return [(o / f"{_vo}.png") for _vo in args.mv_orientations]
