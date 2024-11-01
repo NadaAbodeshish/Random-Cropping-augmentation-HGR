@@ -157,28 +157,41 @@ class e2eTunerImageTuples(fastuple):
 def e2eTunerImageTupleBlock():
     return TransformBlock(type_tfms=e2eTunerImageTuples.create, batch_tfms=IntToFloatTensor)
 
+from fastai.vision.all import get_image_files
+from pathlib import Path
+from fastcore.foundation import L
+
 def get_gesture_sequences(path):
-    files = get_image_files(path)
+    path = Path(path)
     unique_paths = set()
     
-    for file in files:
-        parent_folder = file.parent
-        # Check if the folder is in 'train' or 'valid' by its structure
-        if "train" in str(path) and "aug_" in parent_folder.name:
-            unique_paths.add(parent_folder)
-        elif "train" in str(path):
-            # If in 'train' and no aug_n folders found, add any available aug_n subfolders
-            for aug_folder in parent_folder.glob("aug_*"):
-                unique_paths.add(aug_folder)
-        else:
-            # In 'valid', add the gesture instance folder directly (no augmentation)
-            unique_paths.add(parent_folder)
-
+    # Iterate over each gesture class directory (e.g., 01-Grab)
+    for gesture_class in path.iterdir():
+        if not gesture_class.is_dir():
+            continue
+        
+        # Iterate over each gesture instance folder (e.g., f1s10e3)
+        for instance_folder in gesture_class.iterdir():
+            if "train" in str(path):
+                # In the train folder, add each aug_* subfolder
+                for aug_folder in instance_folder.glob("aug_*"):
+                    unique_paths.add(aug_folder)
+            elif "valid" in str(path):
+                # In the valid folder, add the main gesture instance folder directly
+                unique_paths.add(instance_folder)
+    
     if not unique_paths:
-        print("Warning: No gesture sequences found. Check the folder structure and paths.")
-
-    return L(unique_paths)
-
+        print(f"Warning: No gesture sequences found in {path}. Check the folder structure and paths.")
+    
+    # Convert to L type for Fastai compatibility
+    unique_paths = L(unique_paths)
+    print(f"Debug: Found {len(unique_paths)} gesture sequences in {path}.")
+    
+    # Display a few sample paths to verify the output
+    for i, p in enumerate(unique_paths[:5]):
+        print(f"Debug: Sample path {i + 1}: {p}")
+    
+    return unique_paths
 
 def get_orientation_images(o):
     return [(o / f"{_vo}.png") for _vo in args.mv_orientations]
