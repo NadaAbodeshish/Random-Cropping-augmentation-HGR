@@ -24,8 +24,7 @@ from IPython.display import clear_output
 # ---
 from __main__ import args, deets
 from _helperFunctions import *
-from pathlib import Path
-import re
+
 
 __all__ = [
     "multiOrientationDataLoader",
@@ -159,14 +158,22 @@ def e2eTunerImageTupleBlock():
     return TransformBlock(type_tfms=e2eTunerImageTuples.create, batch_tfms=IntToFloatTensor)
 
 def get_gesture_sequences(path):
-    path = Path(path)  # Ensure path is a Path object
-    gesture_paths = []
-    # Use regex to match folders with format like f1s1e1, f11s11e11, etc.
-    for gesture_instance in path.glob("*"):
-        if re.match(r"^f\d+s\d+e\d+$", gesture_instance.name):
-            for aug_folder in gesture_instance.glob("aug_*"):
-                gesture_paths.append(aug_folder)
-    return L(dict.fromkeys(gesture_paths))
+    files = get_image_files(path)
+    unique_paths = set()
+    
+    for file in files:
+        parent_folder = file.parent  # f<num>s<num>e<num> or aug_n folder
+        # Check if the parent is an aug_n folder and if so, add it directly
+        if "aug_" in parent_folder.name:
+            unique_paths.add(parent_folder)
+        else:
+            # Otherwise, check for aug_n subdirectories and add those
+            for aug_folder in parent_folder.glob("aug_*"):
+                unique_paths.add(aug_folder)
+
+    return L(unique_paths)
+
+
 
 def get_orientation_images(o):
     return [(o / f"{_vo}.png") for _vo in args.mv_orientations]
