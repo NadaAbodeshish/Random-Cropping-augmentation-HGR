@@ -157,41 +157,48 @@ class e2eTunerImageTuples(fastuple):
 def e2eTunerImageTupleBlock():
     return TransformBlock(type_tfms=e2eTunerImageTuples.create, batch_tfms=IntToFloatTensor)
 
-from fastai.vision.all import get_image_files
 from pathlib import Path
 from fastcore.foundation import L
 
-def get_gesture_sequences(path):
-    path = Path(path)
+def get_gesture_sequences(ds_directory):
+    ds_directory = Path(ds_directory)
     unique_paths = set()
+
+    # Define paths for train and valid
+    train_path = ds_directory / "train"
+    valid_path = ds_directory / "valid"
     
-    # Iterate over each gesture class directory (e.g., 01-Grab)
-    for gesture_class in path.iterdir():
-        if not gesture_class.is_dir():
-            continue
-        
-        # Iterate over each gesture instance folder (e.g., f1s10e3)
-        for instance_folder in gesture_class.iterdir():
-            if "train" in str(path):
-                # In the train folder, add each aug_* subfolder
-                for aug_folder in instance_folder.glob("aug_*"):
-                    unique_paths.add(aug_folder)
-            elif "valid" in str(path):
-                # In the valid folder, add the main gesture instance folder directly
-                unique_paths.add(instance_folder)
+    # Check for train folder and handle it
+    if train_path.exists():
+        for gesture_class in train_path.iterdir():
+            if gesture_class.is_dir():
+                for instance_folder in gesture_class.iterdir():
+                    # Add each aug_* subfolder in train
+                    for aug_folder in instance_folder.glob("aug_*"):
+                        unique_paths.add(aug_folder)
+    
+    # Check for valid folder and handle it
+    if valid_path.exists():
+        for gesture_class in valid_path.iterdir():
+            if gesture_class.is_dir():
+                for instance_folder in gesture_class.iterdir():
+                    # Add instance folder directly in valid
+                    unique_paths.add(instance_folder)
+    
+    # Ensure unique paths and convert to L type for Fastai compatibility
+    unique_paths = L(unique_paths)
     
     if not unique_paths:
-        print(f"Warning: No gesture sequences found in {path}. Check the folder structure and paths.")
-    
-    # Convert to L type for Fastai compatibility
-    unique_paths = L(unique_paths)
-    print(f"Debug: Found {len(unique_paths)} gesture sequences in {path}.")
-    
-    # Display a few sample paths to verify the output
+        print(f"Warning: No gesture sequences found in {ds_directory}. Check the folder structure and paths.")
+    else:
+        print(f"Debug: Found {len(unique_paths)} gesture sequences in {ds_directory}.")
+
+    # Show a few sample paths for verification
     for i, p in enumerate(unique_paths[:5]):
         print(f"Debug: Sample path {i + 1}: {p}")
-    
+
     return unique_paths
+
 
 def get_orientation_images(o):
     return [(o / f"{_vo}.png") for _vo in args.mv_orientations]
@@ -221,10 +228,11 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
+    paths = get_gesture_sequences(ds_directory)
 
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=get_gesture_sequences,
+        get_items=lambda p: paths,
         get_x=get_orientation_images,
         get_y=parent_label,
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
