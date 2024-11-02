@@ -227,13 +227,14 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     train_items, valid_items = get_gesture_sequences(ds_directory)
     print(f"Train items: {[str(item) for item in train_items[:1]]}...")  # Show a sample of train items
     print(f"Valid items: {[str(item) for item in valid_items[:1]]}...")  # Show a sample of valid items
+    paths = [Path(p) for p in get_gesture_sequences(ds_directory)]
 
     # Define the DataBlock with manual splitting and custom get_y
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=get_gesture_sequences,
+        get_items=lambda p: paths,  # Use lambda to pass Path-converted items
         get_x=get_orientation_images,
-        get_y=get_gesture_type,  # Use the new function to extract the top-level gesture type
+        get_y=get_gesture_type,  # Extract the gesture type from the top-level folder
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
