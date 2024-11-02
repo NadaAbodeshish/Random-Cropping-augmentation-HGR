@@ -160,35 +160,38 @@ def e2eTunerImageTupleBlock():
 
 from pathlib import Path
 from fastcore.foundation import L
+def get_gesture_sequences(ds_directory):
+    # Print the directory structure for debugging
+    print(f"Debug: Checking items in dataset directory {ds_directory}")
+    base_path = Path(ds_directory)
+    
+    # Check if the train and valid directories exist
+    train_dir = base_path / "train"
+    valid_dir = base_path / "valid"
+    
+    if not train_dir.exists():
+        print("Warning: Train directory not found!")
+    if not valid_dir.exists():
+        print("Warning: Valid directory not found!")
 
-def get_gesture_sequences(path):
-    path = Path(path)
-    train_items = []
-    valid_items = []
+    # Gather all gesture sequences in the train and valid directories
+    gesture_sequences = []
+    for subset in ["train", "valid"]:
+        subset_path = base_path / subset
+        print(f"Debug: Searching in subset {subset_path}")
+        
+        if subset_path.exists():
+            for gesture_path in subset_path.glob("**/*"):
+                if gesture_path.is_file() and gesture_path.suffix in {".png", ".jpg", ".jpeg"}:
+                    gesture_sequences.append(gesture_path)
+                    print(f"Debug: Adding file {gesture_path}")
+        else:
+            print(f"Warning: {subset} subset directory not found in {ds_directory}")
 
-    # Process train items
-    train_path = path / "train"
-    if train_path.exists():
-        for gesture_class in train_path.iterdir():
-            if gesture_class.is_dir():
-                for instance_folder in gesture_class.iterdir():
-                    if instance_folder.is_dir():
-                        for aug_folder in instance_folder.glob("aug_*"):
-                            if aug_folder.is_dir():
-                                for image_file in aug_folder.glob("*.png"):
-                                    train_items.append(image_file)
+    # Final check on gathered items
+    print(f"Debug: Total gesture sequences found: {len(gesture_sequences)}")
+    return gesture_sequences
 
-    # Process valid items
-    valid_path = path / "valid"
-    if valid_path.exists():
-        for gesture_class in valid_path.iterdir():
-            if gesture_class.is_dir():
-                for instance_folder in gesture_class.iterdir():
-                    if instance_folder.is_dir():
-                        for image_file in instance_folder.glob("*.png"):
-                            valid_items.append(image_file)
-
-    return L(train_items), L(valid_items)
 
 def get_orientation_images(o):
     # Ensure paths are constructed only once for each orientation without extra path nesting
