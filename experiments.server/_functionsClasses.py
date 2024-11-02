@@ -416,24 +416,34 @@ class outsidersCustomCallback(TrackerCallback):
 # -----------------------------------------------
 
 
+import traceback
+
 def i_LRFinder(learn, show_plot=False, n_attempts=0):
     try:
-        return learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
+        # Debugging: Check if the learner object is correctly set up
+        print("Debug: Running lr_find with the learner.")
+        result = learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
+        print("Debug: lr_find result:", result)  # Show result for inspection
+        return result
 
     except Exception as e:
         n_attempts += 1
         print(f"@{n_attempts=}: i_LRFinder Exception:: {e}!")
         
-        # Exit on CUDA errors or if the exception mentions missing files
+        # Check for specific errors and handle accordingly
         if "CUDA" in str(e):
             print(f"CUDA RuntimeError - {e}!")
             os._exit(os.EX_OK)
         elif "not in list" in str(e) or "FileNotFoundError" in str(e):
             print(f"File not found or missing item in list. Stopping after {n_attempts} attempts.")
             return  # Stop retrying on file-related issues
+        elif "too many values to unpack" in str(e):
+            print("Error in unpacking values from lr_find result.")
+            print("Debug: Traceback of error:", traceback.format_exc())
+            return  # Stop retrying if unpacking fails
         else:
-            if n_attempts == 69:
-                print(f"i_LRFinder Exception::", traceback.format_exc())
+            if n_attempts >= 69:
+                print("i_LRFinder Exception:", traceback.format_exc())
                 os._exit(os.EX_OK)
             return i_LRFinder(learn, show_plot, n_attempts)
 
