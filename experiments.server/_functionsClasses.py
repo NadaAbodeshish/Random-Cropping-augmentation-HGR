@@ -246,8 +246,14 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     # Create DataLoaders if requested
     if return_dls:
         dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
-        assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
+        
+        # Debugging output to understand the mismatch in classes
+        print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {dls.c}")
+        print(f"Debug: Detected class vocab: {dls.vocab}")
 
+        # Check that the number of classes matches
+        assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
+        
         if preview:
             print(dedent(f"""
             Dataloader has been created successfully...
@@ -262,6 +268,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
             clear_output(wait=False)
 
         return dls
+
 
     else:
         return ds
