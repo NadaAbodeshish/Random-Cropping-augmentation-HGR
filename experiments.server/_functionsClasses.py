@@ -166,26 +166,29 @@ def get_gesture_sequences(path):
     train_items = []
     valid_items = []
 
-    # Process train items (ignore `aug_*` for `i_LRFinder` compatibility)
+    # Process train items (searching for `aug_*` subfolders for each gesture instance)
     train_path = path / "train"
     if train_path.exists():
         for gesture_class in train_path.iterdir():
             if gesture_class.is_dir():
                 for instance_folder in gesture_class.iterdir():
-                    # Only add the instance_folder without `aug_*`
-                    if instance_folder.is_dir() and 'aug_' not in instance_folder.name:
-                        print(f"Adding to train_items: {instance_folder}")  # Debugging statement
-                        train_items.append(instance_folder)
+                    if instance_folder.is_dir():
+                        for aug_folder in instance_folder.glob("aug_*"):
+                            if aug_folder.is_dir():
+                                for image_file in aug_folder.glob("*.png"):
+                                    train_items.append(image_file)
+                                    print(f"Adding to train_items: {image_file}")  # Debugging statement
 
-    # Process valid items
+    # Process valid items (no `aug_*` folders in `valid` directory)
     valid_path = path / "valid"
     if valid_path.exists():
         for gesture_class in valid_path.iterdir():
             if gesture_class.is_dir():
                 for instance_folder in gesture_class.iterdir():
                     if instance_folder.is_dir():
-                        print(f"Adding to valid_items: {instance_folder}")  # Debugging statement
-                        valid_items.append(instance_folder)
+                        for image_file in instance_folder.glob("*.png"):
+                            valid_items.append(image_file)
+                            print(f"Adding to valid_items: {image_file}")  # Debugging statement
 
     # Return paths with manual split
     return L(train_items), L(valid_items)
@@ -226,15 +229,15 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
 
     # Get train and valid items separately
     train_items, valid_items = get_gesture_sequences(ds_directory)
-    print(f"Train items: {[str(item) for item in train_items[:5]]}...")  # Show a sample of train items
-    print(f"Valid items: {[str(item) for item in valid_items[:5]]}...")  # Show a sample of valid items
+    print(f"Train items: {[str(item) for item in train_items[:1]]}...")  # Show a sample of train items
+    print(f"Valid items: {[str(item) for item in valid_items[:1]]}...")  # Show a sample of valid items
 
     # Define the DataBlock with manual splitting and custom get_y
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
         get_items=lambda p: train_items + valid_items,
         get_x=get_orientation_images,
-        get_y=get_label,  # Use custom label function
+        get_y=parent_label,
         splitter=IndexSplitter([i for i in range(len(train_items), len(train_items) + len(valid_items))]),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
@@ -361,18 +364,26 @@ class outsidersCustomCallback(TrackerCallback):
 
 
 def i_LRFinder(learn, show_plot=False, n_attempts=0):
-    try: return learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
+    try:
+        return learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
 
     except Exception as e:
         n_attempts += 1
         print(f"@{n_attempts=}: i_LRFinder Exception:: {e}!")
+        
+        # Exit on CUDA errors or if the exception mentions missing files
         if "CUDA" in str(e):
-            Logger(f"CUDA RuntimeError - {e}!") ; os._exit(os.EX_OK)
-        else:  # "no elements" in str(e) or "out of bounds" in str(e)  or "numerical gradient" in str(e)
+            print(f"CUDA RuntimeError - {e}!")
+            os._exit(os.EX_OK)
+        elif "not in list" in str(e) or "FileNotFoundError" in str(e):
+            print(f"File not found or missing item in list. Stopping after {n_attempts} attempts.")
+            return  # Stop retrying on file-related issues
+        else:
             if n_attempts == 69:
                 print(f"i_LRFinder Exception::", traceback.format_exc())
-                Logger(f"i_LRFinder Exception:: {e}!") ; os._exit(os.EX_OK)
+                os._exit(os.EX_OK)
             return i_LRFinder(learn, show_plot, n_attempts)
+
 
 def i_LRHistorical(n_classes, i_tag):
     maxLearningRates = {
