@@ -678,13 +678,15 @@ class end2endTunerModel(Module):
         if self.debug: print(f"{self= }", end=f"\n{'-'*50}\n\n")
 
     def forward(self, Xy, y=None):
-        # Unpack X and y depending on the contents of Xy
+        # Verify Xy contains exactly two elements
+        if not isinstance(Xy, (list, tuple)) or len(Xy) != 2:
+            raise ValueError(f"Expected Xy to contain exactly two elements, but got {type(Xy)} with length {len(Xy)}")
+        
+        # Unpack X and y as expected
         if y is not None:
             X, y = Xy, y
-        elif isinstance(Xy, (list, tuple)) and len(Xy) == 2:
-            X, y = Xy  # Unpack directly if Xy has exactly two elements
         else:
-            raise ValueError(f"Unexpected input format for Xy: {Xy}")
+            X, y = Xy
 
         # Debugging information to inspect X and y
         if self.debug:
