@@ -222,16 +222,21 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
+    gesture_sequences = get_gesture_sequences(ds_directory)
+    print(f"Debug: Type of get_gesture_sequences output: {type(gesture_sequences)}")
+    print(f"Debug: Contents of get_gesture_sequences output: {gesture_sequences[:5]}")  # Print a sample
 
-    # Get train and valid items separately
-    paths = [Path(p) for p in list(get_gesture_sequences(ds_directory))]
+    # Ensure the output is a list
+    paths = [Path(p) if isinstance(p, (str, Path)) else Path(str(p)) for p in list(gesture_sequences)]
+    print(f"Debug: Converted paths sample: {paths[:5]}")
+
 
     # Define the DataBlock with manual splitting and custom get_y
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=lambda p: paths,  # Use lambda to pass Path-converted items
+        get_items=lambda p: paths,  # Use lambda to pass the processed paths
         get_x=get_orientation_images,
-        get_y=get_gesture_type,  # Extract the gesture type from the top-level folder
+        get_y=get_gesture_type,  # Extract gesture type correctly
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
