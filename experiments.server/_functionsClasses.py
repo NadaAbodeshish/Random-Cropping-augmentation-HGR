@@ -234,7 +234,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
         get_items=lambda p: train_items + valid_items,
         get_x=get_orientation_images,
-        get_y=parent_label,
+        get_y=get_label,
         splitter=IndexSplitter([i for i in range(len(train_items), len(train_items) + len(valid_items))]),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
