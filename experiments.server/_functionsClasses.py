@@ -200,6 +200,27 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
 def get_gesture_type(o):
     """Extracts the gesture type from the file path."""
     return o.parent.parent.name 
+import os
+from fastai.vision.all import *
+from pathlib import Path
+
+def get_image_files_augmented(path, valid=False):
+    """
+    Function to get all image files, handling for augmented training folders.
+    
+    Args:
+        path (Path): The base path to either training or validation directory.
+        valid (bool): Flag to indicate if the dataset is for validation.
+    
+    Returns:
+        list: List of image file paths.
+    """
+    if valid:
+        # For validation, directly access images without `aug_*` folders
+        return [p for p in path.rglob("*.png") if "aug_" not in p.parts]
+    else:
+        # For training, include augmented images
+        return [p for p in path.rglob("*.png")]
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
     tfms = aug_transforms(
@@ -207,62 +228,87 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
 
-    gesture_sequences = get_gesture_sequences(ds_directory)
-    gesture_sequences = [str(p) if isinstance(p, Path) else p for p in gesture_sequences if isinstance(p, (str, Path)) and p.exists()]
-    
-    paths = [Path(p) for p in gesture_sequences]
-    print(f"Debug: Total items found: {len(paths)}")
-
-    if not paths:
-        raise ValueError("No valid paths found. Check that `ds_directory` contains valid images structured for training and validation.")
+    # Training and validation paths
+    train_path = Path(ds_directory) / "train"
+    valid_path = Path(ds_directory) / ds_valid
 
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=lambda p: paths,
-        get_x=get_orientation_images,
-        get_y=get_gesture_type,
-        splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
-        item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
+        get_items=get_image_files_augmented,
+        get_y=lambda path: path.parent.parent.name if "aug_" in path.parts else path.parent.name,
+        splitter=GrandparentSplitter(train_name='train', valid_name=ds_valid),
+        item_tfms=Resize(img_size),
+        batch_tfms=tfms  # Apply augmentations to training images only
     )
 
-    try:
-        ds = multiDHG1428.datasets(ds_directory, verbose=False)
-    except Exception as e:
-        print(f"Debug: Dataset creation failed with paths: {paths[:5]}...")
-        raise ValueError(f"Error creating datasets: {e}")
+    dls = multiDHG1428.dataloaders(ds_directory, bs=bs, shuffle=shuffle)
 
-    if len(ds.train) == 0 or len(ds.valid) == 0:
-        print(f"Debug: Training split size: {len(ds.train)}, Validation split size: {len(ds.valid)}")
-        raise ValueError("One of the dataset splits is empty. Ensure images are correctly placed in 'train' and 'valid' folders.")
+    if preview:
+        dls.show_batch(max_n=4, figsize=(12, 12))
+    return dls if return_dls else multiDHG1428
 
-    print(f"Debug: Number of items in training split: {len(ds.train)}")
-    print(f"Debug: Number of items in validation split: {len(ds.valid)}")
+# def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
+#     tfms = aug_transforms(
+#         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
+#         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
+#     )
 
-    if return_dls:
-        try:
-            dls = multiDHG1428.dataloaders(
-                ds_directory, bs=bs, worker_init_fn=_e_seed_worker,
-                generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0
-            )
-        except Exception as e:
-            print(f"Debug: Failed to create DataLoaders with paths: {paths[:5]}...")
-            raise ValueError(f"Error creating DataLoaders: {e}")
+#     gesture_sequences = get_gesture_sequences(ds_directory)
+#     gesture_sequences = [str(p) if isinstance(p, Path) else p for p in gesture_sequences if isinstance(p, (str, Path)) and p.exists()]
+    
+#     paths = [Path(p) for p in gesture_sequences]
+#     print(f"Debug: Total items found: {len(paths)}")
+
+#     if not paths:
+#         raise ValueError("No valid paths found. Check that `ds_directory` contains valid images structured for training and validation.")
+
+#     multiDHG1428 = DataBlock(
+#         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
+#         get_items=lambda p: paths,
+#         get_x=get_orientation_images,
+#         get_y=get_gesture_type,
+#         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
+#         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
+#         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
+#     )
+
+#     try:
+#         ds = multiDHG1428.datasets(ds_directory, verbose=False)
+#     except Exception as e:
+#         print(f"Debug: Dataset creation failed with paths: {paths[:5]}...")
+#         raise ValueError(f"Error creating datasets: {e}")
+
+#     if len(ds.train) == 0 or len(ds.valid) == 0:
+#         print(f"Debug: Training split size: {len(ds.train)}, Validation split size: {len(ds.valid)}")
+#         raise ValueError("One of the dataset splits is empty. Ensure images are correctly placed in 'train' and 'valid' folders.")
+
+#     print(f"Debug: Number of items in training split: {len(ds.train)}")
+#     print(f"Debug: Number of items in validation split: {len(ds.valid)}")
+
+#     if return_dls:
+#         try:
+#             dls = multiDHG1428.dataloaders(
+#                 ds_directory, bs=bs, worker_init_fn=_e_seed_worker,
+#                 generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0
+#             )
+#         except Exception as e:
+#             print(f"Debug: Failed to create DataLoaders with paths: {paths[:5]}...")
+#             raise ValueError(f"Error creating DataLoaders: {e}")
         
-        print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {dls.c}")
-        print(f"Debug: Detected class vocab: {dls.vocab}")
+#         print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {dls.c}")
+#         print(f"Debug: Detected class vocab: {dls.vocab}")
 
-        assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
+#         assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
 
-        if preview:
-            dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
-            dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
-        else:
-            clear_output(wait=False)
+#         if preview:
+#             dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
+#             dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
+#         else:
+#             clear_output(wait=False)
 
-        return dls
+#         return dls
 
-    return ds
+#     return ds
 
 # -----------------------------------------------
 
