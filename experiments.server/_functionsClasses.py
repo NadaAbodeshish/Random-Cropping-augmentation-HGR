@@ -190,23 +190,9 @@ def get_gesture_sequences(path):
 
     return L(train_items), L(valid_items)
 
-
-from fastai.vision.all import PILImage
-
 def get_orientation_images(o):
-    images = []
-    for orientation in args.mv_orientations:
-        orientation_file = o / f"{orientation}.png"
-        
-        # Check if the file exists to avoid errors
-        if orientation_file.exists():
-            images.append(PILImage.create(orientation_file))
-        else:
-            print(f"Warning: Missing {orientation_file}")
-
-    # Ensure we return images as a tuple if found, otherwise handle appropriately
-    return tuple(images) if images else None
-
+    # Ensure paths are constructed only once for each orientation without extra path nesting
+    return [o.parent / f"{orientation}.png" for orientation in args.mv_orientations]
 
 def get_mVOs_img_size(subset):
     assert "fastai.data.core.TfmdDL" in str(type(subset)), "train/valid dls subset should be provided!"
