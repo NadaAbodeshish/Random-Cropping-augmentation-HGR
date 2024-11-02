@@ -159,7 +159,6 @@ def e2eTunerImageTupleBlock():
     return TransformBlock(type_tfms=e2eTunerImageTuples.create, batch_tfms=IntToFloatTensor)
 
 from pathlib import Path
-from fastcore.foundation import L
 def get_gesture_sequences(ds_directory):
     # Print the directory structure for debugging
     print(f"Debug: Checking items in dataset directory {ds_directory}")
@@ -220,63 +219,33 @@ def get_gesture_type(o):
     """Extracts the gesture type from the file path."""
     return o.parent.parent.name 
 
-def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
-    tfms = aug_transforms(
-        do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
-        max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
-    )
+from fastai.data.transforms import RandomSplitter
 
-    # Ensure gesture_sequences is a list of valid paths (strings)
+def multiOrientationDataLoader(ds_directory, bs, img_size, e2eTunerMode=False, preview=False):
+    # Load all files
     gesture_sequences = get_gesture_sequences(ds_directory)
-    gesture_sequences = [str(p) if isinstance(p, Path) else p for p in gesture_sequences if isinstance(p, (str, Path))]
+    print(f"Debug: Total gesture sequences found: {len(gesture_sequences)}")
+
+    # Define a random split if one is not explicitly provided
+    splitter = RandomSplitter(valid_pct=0.2)  # Adjust validation percentage as needed
+    splits = splitter(gesture_sequences)
+
+    if not splits[0] or not splits[1]:
+        raise ValueError("Training or validation split is empty. Check dataset structure and splitting logic.")
+
+    # Create the datasets object
+    try:
+        ds = multiDHG1428.datasets(ds_directory, splits=splits, verbose=False)
+    except Exception as e:
+        print(f"Error creating datasets: {e}")
+        raise
+
+    dls = ds.dataloaders(bs=bs, shuffle=True)
     
-    paths = [Path(p) for p in gesture_sequences]
-    print(f"Debug: Total items found: {len(paths)}")
+    # Debugging outputs
+    print(f"Debug: Training items: {len(splits[0])}, Validation items: {len(splits[1])}")
 
-    multiDHG1428 = DataBlock(
-        blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=lambda p: paths,  # Use lambda to pass the processed paths
-        get_x=get_orientation_images,
-        get_y=get_gesture_type,  # Extract gesture type correctly
-        splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
-        item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
-    )
-
-    # Generate datasets and validate splits
-    ds = multiDHG1428.datasets(ds_directory, verbose=False)
-    print(f"Debug: Number of items in training split: {len(ds.train)}")
-    print(f"Debug: Number of items in validation split: {len(ds.valid)}")
-
-    # Ensure splits are not empty
-    if len(ds.train) == 0 or len(ds.valid) == 0:
-        raise ValueError("One of the dataset splits is empty. Check the directory structure and ensure images are in the correct train/valid folders.")
-
-    if return_dls:
-        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
-        
-        print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {dls.c}")
-        print(f"Debug: Detected class vocab: {dls.vocab}")
-
-        assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
-
-        if preview:
-            print(dedent(f"""
-            Dataloader has been created successfully...
-            The dataloader has {len(dls.vocab)} ({dls.c}) classes: {dls.vocab}
-            Training set [len={len(dls.train.items)}, img_sz={get_mVOs_img_size(dls.train)}] loaded on device: {dls.train.device}
-            Validation set [len={len(dls.valid.items)}, img_sz={get_mVOs_img_size(dls.valid)}] loaded on device: {dls.valid.device}
-            Previewing loaded data [1] and applied transforms [2]...
-            """))
-            dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
-            dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
-        else:
-            clear_output(wait=False)
-
-        return dls
-
-    else:
-        return ds
+    return dls
 # -----------------------------------------------
 
 
