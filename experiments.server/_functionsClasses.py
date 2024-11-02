@@ -213,16 +213,15 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     # ---
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
+def get_gesture_type(o):
+    """Extracts the gesture type from the file path."""
+    return o.parent.parent.name 
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
-
-    # Custom label function for gesture classes
-    def get_label(o):
-        return o.parent.parent.name  # Gets the gesture class folder name (e.g., "01-Grab")
 
     # Get train and valid items separately
     train_items, valid_items = get_gesture_sequences(ds_directory)
@@ -232,10 +231,10 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     # Define the DataBlock with manual splitting and custom get_y
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=lambda p: train_items + valid_items,
+        get_items=get_gesture_sequences,
         get_x=get_orientation_images,
-        get_y=get_label,
-        splitter=IndexSplitter([i for i in range(len(train_items), len(train_items) + len(valid_items))]),
+        get_y=get_gesture_type,  # Use the new function to extract the top-level gesture type
+        splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
     )
