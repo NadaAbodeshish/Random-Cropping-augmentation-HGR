@@ -165,17 +165,17 @@ def get_gesture_sequences(path):
     path = Path(path)
     train_items = []
     valid_items = []
-    
-    # Process train items
+
+    # Process train items (ignore `aug_*` for `i_LRFinder` compatibility)
     train_path = path / "train"
     if train_path.exists():
         for gesture_class in train_path.iterdir():
             if gesture_class.is_dir():
                 for instance_folder in gesture_class.iterdir():
-                    for aug_folder in instance_folder.glob("aug_*"):
-                        # Debugging: Check each item added to train_items
-                        print(f"Adding to train_items: {aug_folder}")
-                        train_items.append(aug_folder)
+                    # Only add the instance_folder without `aug_*`
+                    if instance_folder.is_dir() and 'aug_' not in instance_folder.name:
+                        print(f"Adding to train_items: {instance_folder}")  # Debugging statement
+                        train_items.append(instance_folder)
 
     # Process valid items
     valid_path = path / "valid"
@@ -183,9 +183,9 @@ def get_gesture_sequences(path):
         for gesture_class in valid_path.iterdir():
             if gesture_class.is_dir():
                 for instance_folder in gesture_class.iterdir():
-                    # Debugging: Check each item added to valid_items
-                    print(f"Adding to valid_items: {instance_folder}")
-                    valid_items.append(instance_folder)
+                    if instance_folder.is_dir():
+                        print(f"Adding to valid_items: {instance_folder}")  # Debugging statement
+                        valid_items.append(instance_folder)
 
     # Return paths with manual split
     return L(train_items), L(valid_items)
