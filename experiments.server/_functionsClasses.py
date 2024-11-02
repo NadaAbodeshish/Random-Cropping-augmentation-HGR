@@ -25,7 +25,7 @@ from IPython.display import clear_output
 # ---
 from __main__ import args, deets
 from _helperFunctions import *
-
+from pathlib import Path
 
 __all__ = [
     "multiOrientationDataLoader",
@@ -200,21 +200,20 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
 def get_gesture_type(o):
     """Extracts the gesture type from the file path."""
     return o.parent.parent.name 
-import os
-from fastai.vision.all import *
-from pathlib import Path
+
 
 def get_image_files_augmented(path, valid=False):
     """
     Function to get all image files, handling for augmented training folders.
     
     Args:
-        path (Path): The base path to either training or validation directory.
+        path (str or Path): The base path to either training or validation directory.
         valid (bool): Flag to indicate if the dataset is for validation.
     
     Returns:
         list: List of image file paths.
     """
+    path = Path(path)  # Convert to Path object if not already
     if valid:
         # For validation, directly access images without `aug_*` folders
         return [p for p in path.rglob("*.png") if "aug_" not in p.parts]
