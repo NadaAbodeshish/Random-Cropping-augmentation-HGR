@@ -18,6 +18,7 @@ import torch
 import torch.nn as NN
 import numpy as np
 from fastai.vision.all import *
+from fastai.vision.all import aug_transforms, Resize, Normalize, imagenet_stats, GrandparentSplitter
 from fastai.torch_core import defaults
 from torch.utils.tensorboard.writer import SummaryWriter
 from IPython.display import clear_output
@@ -168,37 +169,25 @@ def get_gesture_sequences(ds_directory):
     train_path = ds_directory / "train"
     valid_path = ds_directory / "valid"
     
-    # Check for train folder and handle it
+    # Process train path
     if train_path.exists():
         for gesture_class in train_path.iterdir():
             if gesture_class.is_dir():
                 for instance_folder in gesture_class.iterdir():
-                    # Add each aug_* subfolder in train
                     for aug_folder in instance_folder.glob("aug_*"):
                         unique_paths.add(aug_folder)
     
-    # Check for valid folder and handle it
+    # Process valid path
     if valid_path.exists():
         for gesture_class in valid_path.iterdir():
             if gesture_class.is_dir():
                 for instance_folder in gesture_class.iterdir():
-                    # Add instance folder directly in valid
                     unique_paths.add(instance_folder)
-    
-    # Ensure unique paths and convert to L type for Fastai compatibility
-    unique_paths = L(unique_paths)
     
     if not unique_paths:
         print(f"Warning: No gesture sequences found in {ds_directory}. Check the folder structure and paths.")
-    else:
-        print(f"Debug: Found {len(unique_paths)} gesture sequences in {ds_directory}.")
-
-    # Show a few sample paths for verification
-    for i, p in enumerate(unique_paths[:5]):
-        print(f"Debug: Sample path {i + 1}: {p}")
-
-    return unique_paths
-
+    
+    return L(unique_paths)
 
 def get_orientation_images(o):
     return [(o / f"{_vo}.png") for _vo in args.mv_orientations]
@@ -223,16 +212,21 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
 
+
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
+    # Define the augmentation transforms
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
+
+    # Obtain the preprocessed paths from get_gesture_sequences
     paths = get_gesture_sequences(ds_directory)
 
+    # Define DataBlock to configure the data loading and transformations
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=lambda p: paths,
+        get_items=lambda p: paths,  # Use paths directly as items source
         get_x=get_orientation_images,
         get_y=parent_label,
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
@@ -240,12 +234,20 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
     )
 
+    # Load datasets
     ds = multiDHG1428.datasets(ds_directory, verbose=False)
+
+    # Create DataLoaders if requested
     if return_dls:
-        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=e_seed_worker, generator=e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
-        # clear_output(wait=False)
+        dls = multiDHG1428.dataloaders(
+            ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, 
+            device=defaults.device, shuffle=shuffle, num_workers=0
+        )
+        
+        # Check that the dataloader class count matches expectations
         assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
 
+        # Preview the dataloader setup and display batches if requested
         if preview:
             print(dedent(f"""
             Dataloader has been created successfully...
@@ -256,11 +258,14 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
             """))
             dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
             dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
-        else: clear_output(wait=False)
+        else:
+            clear_output(wait=False)
 
         return dls
 
-    else: return ds
+    else:
+        return ds
+
 # -----------------------------------------------
 
 
