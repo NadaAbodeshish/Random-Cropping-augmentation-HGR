@@ -223,12 +223,8 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
     gesture_sequences = get_gesture_sequences(ds_directory)
-    print(f"Debug: Type of get_gesture_sequences output: {type(gesture_sequences)}")
-    print(f"Debug: Contents of get_gesture_sequences output: {gesture_sequences[:5]}")  # Print a sample
-
-    # Ensure the output is a list
-    paths = [Path(p) if isinstance(p, (str, Path)) else Path(str(p)) for p in list(gesture_sequences)]
-    print(f"Debug: Converted paths sample: {paths[:5]}")
+    paths = [Path(p) for p in list(gesture_sequences)]
+    print(f"Debug: Total items found: {len(paths)}")
 
 
     # Define the DataBlock with manual splitting and custom get_y
@@ -244,7 +240,12 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
 
     # Create datasets
     ds = multiDHG1428.datasets(ds_directory, verbose=False)
+    print(f"Debug: Number of items in training split: {len(ds.train)}")
+    print(f"Debug: Number of items in validation split: {len(ds.valid)}")
     
+    if len(ds.train) == 0 or len(ds.valid) == 0:
+        raise ValueError("One of the dataset splits is empty. Check the directory structure and ensure images are in the correct train/valid folders.")
+
     # Create DataLoaders if requested
     if return_dls:
         dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
