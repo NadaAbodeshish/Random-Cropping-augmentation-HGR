@@ -161,9 +161,6 @@ def e2eTunerImageTupleBlock():
 from pathlib import Path
 from fastcore.foundation import L
 
-from pathlib import Path
-from fastcore.foundation import L
-
 def get_gesture_sequences(path):
     path = Path(path)
     train_items = []
@@ -176,7 +173,8 @@ def get_gesture_sequences(path):
             if gesture_class.is_dir():
                 for instance_folder in gesture_class.iterdir():
                     for aug_folder in instance_folder.glob("aug_*"):
-                        # Add only instance folder as parent
+                        # Debugging: Check each item added to train_items
+                        print(f"Adding to train_items: {aug_folder}")
                         train_items.append(aug_folder)
 
     # Process valid items
@@ -185,11 +183,13 @@ def get_gesture_sequences(path):
         for gesture_class in valid_path.iterdir():
             if gesture_class.is_dir():
                 for instance_folder in gesture_class.iterdir():
-                    # Add only instance folder as parent
+                    # Debugging: Check each item added to valid_items
+                    print(f"Adding to valid_items: {instance_folder}")
                     valid_items.append(instance_folder)
 
     # Return paths with manual split
     return L(train_items), L(valid_items)
+
 
 def get_orientation_images(o):
     return [(o / f"{_vo}.png") for _vo in args.mv_orientations]
@@ -226,6 +226,8 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
 
     # Get train and valid items separately
     train_items, valid_items = get_gesture_sequences(ds_directory)
+    print(f"Train items: {[str(item) for item in train_items[:5]]}...")  # Show a sample of train items
+    print(f"Valid items: {[str(item) for item in valid_items[:5]]}...")  # Show a sample of valid items
 
     # Define the DataBlock with manual splitting and custom get_y
     multiDHG1428 = DataBlock(
