@@ -166,7 +166,7 @@ def get_gesture_sequences(path):
     train_items = []
     valid_items = []
 
-    # Process train items (searching for `aug_*` subfolders for each gesture instance)
+    # Process train items
     train_path = path / "train"
     if train_path.exists():
         for gesture_class in train_path.iterdir():
@@ -177,9 +177,8 @@ def get_gesture_sequences(path):
                             if aug_folder.is_dir():
                                 for image_file in aug_folder.glob("*.png"):
                                     train_items.append(image_file)
-                                    print(f"Adding to train_items: {image_file}")  # Debugging statement
 
-    # Process valid items (no `aug_*` folders in `valid` directory)
+    # Process valid items
     valid_path = path / "valid"
     if valid_path.exists():
         for gesture_class in valid_path.iterdir():
@@ -188,14 +187,26 @@ def get_gesture_sequences(path):
                     if instance_folder.is_dir():
                         for image_file in instance_folder.glob("*.png"):
                             valid_items.append(image_file)
-                            print(f"Adding to valid_items: {image_file}")  # Debugging statement
 
-    # Return paths with manual split
     return L(train_items), L(valid_items)
 
 
+from fastai.vision.all import PILImage
+
 def get_orientation_images(o):
-    return [(o / f"{_vo}.png") for _vo in args.mv_orientations]
+    images = []
+    for orientation in args.mv_orientations:
+        orientation_file = o / f"{orientation}.png"
+        
+        # Check if the file exists to avoid errors
+        if orientation_file.exists():
+            images.append(PILImage.create(orientation_file))
+        else:
+            print(f"Warning: Missing {orientation_file}")
+
+    # Ensure we return images as a tuple if found, otherwise handle appropriately
+    return tuple(images) if images else None
+
 
 def get_mVOs_img_size(subset):
     assert "fastai.data.core.TfmdDL" in str(type(subset)), "train/valid dls subset should be provided!"
