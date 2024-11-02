@@ -176,19 +176,20 @@ def get_gesture_sequences(path):
             if gesture_class.is_dir():
                 for instance_folder in gesture_class.iterdir():
                     for aug_folder in instance_folder.glob("aug_*"):
+                        # Add only instance folder as parent
                         train_items.append(aug_folder)
-    
+
     # Process valid items
     valid_path = path / "valid"
     if valid_path.exists():
         for gesture_class in valid_path.iterdir():
             if gesture_class.is_dir():
                 for instance_folder in gesture_class.iterdir():
+                    # Add only instance folder as parent
                     valid_items.append(instance_folder)
 
     # Return paths with manual split
     return L(train_items), L(valid_items)
-
 
 def get_orientation_images(o):
     return [(o / f"{_vo}.png") for _vo in args.mv_orientations]
@@ -212,21 +213,26 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     # ---
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
+
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
 
+    # Custom label function for gesture classes
+    def get_label(o):
+        return o.parent.parent.name  # Gets the gesture class folder name (e.g., "01-Grab")
+
     # Get train and valid items separately
     train_items, valid_items = get_gesture_sequences(ds_directory)
 
-    # Define the DataBlock with manual splitting
+    # Define the DataBlock with manual splitting and custom get_y
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
         get_items=lambda p: train_items + valid_items,
         get_x=get_orientation_images,
-        get_y=parent_label,
+        get_y=get_label,  # Use custom label function
         splitter=IndexSplitter([i for i in range(len(train_items), len(train_items) + len(valid_items))]),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
@@ -257,8 +263,6 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
 
     else:
         return ds
-
-
 
 # -----------------------------------------------
 
