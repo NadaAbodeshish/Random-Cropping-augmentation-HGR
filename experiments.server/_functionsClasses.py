@@ -420,33 +420,24 @@ import traceback
 
 def i_LRFinder(learn, show_plot=False, n_attempts=0):
     try:
-        # Debugging: Check if the learner object is correctly set up
-        print("Debug: Running lr_find with the learner.")
         result = learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
-        print("Debug: lr_find result:", result)  # Show result for inspection
         return result
-
     except Exception as e:
         n_attempts += 1
         print(f"@{n_attempts=}: i_LRFinder Exception:: {e}!")
         
-        # Check for specific errors and handle accordingly
-        if "CUDA" in str(e):
-            print(f"CUDA RuntimeError - {e}!")
+        # Handle CUDA or file errors
+        if "CUDA" in str(e) or "FileNotFoundError" in str(e):
+            print(f"Critical error encountered. Exiting: {e}")
             os._exit(os.EX_OK)
-        elif "not in list" in str(e) or "FileNotFoundError" in str(e):
-            print(f"File not found or missing item in list. Stopping after {n_attempts} attempts.")
-            return  # Stop retrying on file-related issues
         elif "too many values to unpack" in str(e):
-            print("Error in unpacking values from lr_find result.")
-            print("Debug: Traceback of error:", traceback.format_exc())
-            return  # Stop retrying if unpacking fails
+            print("Error unpacking values from lr_find result.")
+            return None  # Explicitly return None for getLR to handle
         else:
             if n_attempts >= 69:
-                print("i_LRFinder Exception:", traceback.format_exc())
+                print("Max attempts reached:", traceback.format_exc())
                 os._exit(os.EX_OK)
             return i_LRFinder(learn, show_plot, n_attempts)
-
 
 def i_LRHistorical(n_classes, i_tag):
     maxLearningRates = {
@@ -468,9 +459,18 @@ def i_LRHistorical(n_classes, i_tag):
     return maxLearningRates[n_classes][i_tag]
 
 def getLR(learn, i_tag, show_plot=False):
-    if args.lrs_type == "lrHistorical": return i_LRHistorical(args.n_classes, i_tag)
-    elif args.lrs_type == "lrFinder":   return i_LRFinder(learn, show_plot=show_plot).valley
-    else:                               return defaults.lr
+    if args.lrs_type == "lrHistorical":
+        return i_LRHistorical(args.n_classes, i_tag)
+    elif args.lrs_type == "lrFinder":
+        # Attempt to get the learning rate using i_LRFinder
+        lr_finder_result = i_LRFinder(learn, show_plot=show_plot)
+        if lr_finder_result is None:
+            print("Warning: LR Finder failed. Using default learning rate.")
+            return defaults.lr  # Fallback to a default learning rate
+        return lr_finder_result.valley
+    else:
+        return defaults.lr  # Default learning rate if no method is specified
+
 
 def isFrozen(learn):
     for child in learn.model.children():
@@ -678,32 +678,48 @@ class end2endTunerModel(Module):
         if self.debug: print(f"{self= }", end=f"\n{'-'*50}\n\n")
 
     def forward(self, Xy, y=None):
-        if y is not None: X, y = Xy, y  # [NOTE] modified for tensorboard SummaryWriter
-        else:             X, y = Xy     # [NOTE] modified for tensorboard SummaryWriter
+        # Unpack X and y depending on the contents of Xy
+        if y is not None:
+            X, y = Xy, y
+        elif isinstance(Xy, (list, tuple)) and len(Xy) == 2:
+            X, y = Xy  # Unpack directly if Xy has exactly two elements
+        else:
+            raise ValueError(f"Unexpected input format for Xy: {Xy}")
 
+        # Debugging information to inspect X and y
         if self.debug:
             print(f"\n{type(X)= } | {len(X)= } | {explode_types(X)= }")
-            for xi in X: print(f"{explode_types(xi)= } | {xi.shape= }")
+            for xi in X:
+                print(f"{explode_types(xi)= } | {xi.shape= }")
 
+        # Multi-view features extraction
         mvo_ftrs = [self.multiVOsBody(xi) for xi in X]
         mvo_ftrs = [self.multiVOsHead(xi) for xi in mvo_ftrs]
 
+        # Debugging: Check shapes after feature extraction
         if self.debug:
-            for idx in range(len(X)): print(f">> {X[idx].shape= } ~~ {mvo_ftrs[idx].shape= }")
+            for idx in range(len(X)):
+                print(f">> {X[idx].shape= } ~~ {mvo_ftrs[idx].shape= }")
 
+        # Concatenate multi-view predictions
         mvo_preds = torch.cat([torch.unsqueeze(xi.detach(), dim=1) for xi in mvo_ftrs], dim=1)
+        
+        # Decode targets and tune images for the next layer
         tnr_y = self.decode_batch_targs(y)
         tnr_X = self.batch_tuner_images(mvo_preds, tnr_y)
-        
+
+        # Further processing with tuner layers
         tnr_ftrs = self.tunerBody(tnr_X)
         tnr_ftrs = self.tunerHead(tnr_ftrs)
 
+        # Final debugging output
         if self.debug:
             print(f">> {tnr_X.shape= } | {tnr_y.shape= }")
             print(f">> {mvo_preds.shape= } | {tnr_ftrs.shape= }")
-            self.debug = False #; os._exit(os.EX_OK)
+            self.debug = False  # Disable debug mode after the first forward pass
 
         return [*mvo_ftrs, tnr_ftrs]
+
 
     def decode_batch_targs(self, yb):
         yb = torch.vstack(yb).moveaxis(0, -1).detach().cpu()
