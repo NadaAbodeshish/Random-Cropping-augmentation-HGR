@@ -231,6 +231,10 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     gesture_sequences = [str(p) if isinstance(p, Path) else p for p in gesture_sequences if isinstance(p, (str, Path))]
     paths = [Path(p) for p in gesture_sequences]
     
+    # Ensure that paths were correctly gathered
+    if not paths:
+        raise ValueError("No valid paths found. Check that `ds_directory` contains valid images structured for training and validation.")
+    
     print(f"Debug: Total items found: {len(paths)}")
 
     # Define the DataBlock
@@ -248,6 +252,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     try:
         ds = multiDHG1428.datasets(ds_directory, verbose=False)
     except Exception as e:
+        print(f"Debug: Dataset creation failed with paths: {paths[:5]}...")  # Show first few paths for inspection
         raise ValueError(f"Error creating datasets: {e}")
     
     # Validate that both train and valid splits are non-empty
@@ -259,10 +264,14 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
 
     if return_dls:
         # Create DataLoaders
-        dls = multiDHG1428.dataloaders(
-            ds_directory, bs=bs, worker_init_fn=_e_seed_worker,
-            generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0
-        )
+        try:
+            dls = multiDHG1428.dataloaders(
+                ds_directory, bs=bs, worker_init_fn=_e_seed_worker,
+                generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0
+            )
+        except Exception as e:
+            print(f"Debug: Failed to create DataLoaders with paths: {paths[:5]}...")
+            raise ValueError(f"Error creating DataLoaders: {e}")
         
         # Check number of classes
         print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {dls.c}")
