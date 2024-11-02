@@ -197,6 +197,8 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     # ---
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
+
+
 def get_gesture_type(o):
     """Extracts the gesture type from the file path."""
     return o.parent.parent.name 
@@ -204,28 +206,24 @@ def get_gesture_type(o):
 
 def get_image_files_augmented(path, valid=False):
     """
-    Function to get all image files, handling for augmented training folders.
-    
-    Args:
-        path (str or Path): The base path to either training or validation directory.
-        valid (bool): Flag to indicate if the dataset is for validation.
-    
-    Returns:
-        list: List of image file paths.
+    Fetch all image files, handling augmented folders.
     """
     path = Path(path)
-    # Debug: Print directory contents for troubleshooting
     print(f"Debug: Fetching images from {'validation' if valid else 'training'} path - {path}")
     if valid:
-        # For validation, retrieve images excluding augmentation folders
         images = [p for p in path.rglob("*.png") if "aug_" not in p.parts]
     else:
-        # For training, retrieve all images including in augmentation folders
         images = list(path.rglob("*.png"))
-    
-    # Debug: Check number of images found
     print(f"Debug: Found {len(images)} images in {'validation' if valid else 'training'} set.")
     return images
+
+def custom_splitter(items):
+    """
+    Split images based on folder structure.
+    Assumes 'train' and 'valid' folders at a higher level.
+    """
+    is_valid = ["valid" in str(item) for item in items]
+    return [i for i, valid in enumerate(is_valid) if not valid], [i for i, valid in enumerate(is_valid) if valid]
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False):
     tfms = aug_transforms(
@@ -237,11 +235,18 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     train_path = Path(ds_directory) / "train"
     valid_path = Path(ds_directory) / ds_valid
 
+    def get_y(path):
+        # Adjust label extraction based on aug_* folder presence
+        if "aug_" in path.parts:
+            return path.parent.parent.name  # Parent of augmentation folder
+        else:
+            return path.parent.name  # Direct parent folder for non-augmented
+
     multiDHG1428 = DataBlock(
         blocks=(ImageBlock, CategoryBlock),
         get_items=get_image_files_augmented,
-        get_y=lambda path: path.parent.parent.name if "aug_" in path.parts else path.parent.name,
-        splitter=GrandparentSplitter(train_name='train', valid_name=ds_valid),
+        get_y=get_y,
+        splitter=custom_splitter,
         item_tfms=Resize(img_size),
         batch_tfms=tfms
     )
@@ -249,7 +254,6 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     # Create data loaders
     dls = multiDHG1428.dataloaders(ds_directory, bs=bs, shuffle=shuffle)
 
-    # Debug: Preview dataset if required
     if preview:
         dls.show_batch(max_n=4, figsize=(12, 12))
     
