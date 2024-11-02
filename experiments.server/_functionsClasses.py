@@ -222,12 +222,14 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
+
+    # Ensure gesture_sequences is a list of valid paths (strings)
     gesture_sequences = get_gesture_sequences(ds_directory)
-    paths = [Path(p) for p in list(gesture_sequences)]
+    gesture_sequences = [str(p) if isinstance(p, Path) else p for p in gesture_sequences if isinstance(p, (str, Path))]
+    
+    paths = [Path(p) for p in gesture_sequences]
     print(f"Debug: Total items found: {len(paths)}")
 
-
-    # Define the DataBlock with manual splitting and custom get_y
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
         get_items=lambda p: paths,  # Use lambda to pass the processed paths
@@ -238,25 +240,23 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
     )
 
-    # Create datasets
+    # Generate datasets and validate splits
     ds = multiDHG1428.datasets(ds_directory, verbose=False)
     print(f"Debug: Number of items in training split: {len(ds.train)}")
     print(f"Debug: Number of items in validation split: {len(ds.valid)}")
-    
+
+    # Ensure splits are not empty
     if len(ds.train) == 0 or len(ds.valid) == 0:
         raise ValueError("One of the dataset splits is empty. Check the directory structure and ensure images are in the correct train/valid folders.")
 
-    # Create DataLoaders if requested
     if return_dls:
         dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
         
-        # Debugging output to understand the mismatch in classes
         print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {dls.c}")
         print(f"Debug: Detected class vocab: {dls.vocab}")
 
-        # Check that the number of classes matches
         assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
-        
+
         if preview:
             print(dedent(f"""
             Dataloader has been created successfully...
@@ -272,10 +272,8 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
 
         return dls
 
-
     else:
         return ds
-
 # -----------------------------------------------
 
 
