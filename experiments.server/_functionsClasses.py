@@ -213,37 +213,46 @@ def get_image_files_augmented(path, valid=False):
     Returns:
         list: List of image file paths.
     """
-    path = Path(path)  # Convert to Path object if not already
+    path = Path(path)
+    # Debug: Print directory contents for troubleshooting
+    print(f"Debug: Fetching images from {'validation' if valid else 'training'} path - {path}")
     if valid:
-        # For validation, directly access images without `aug_*` folders
-        return [p for p in path.rglob("*.png") if "aug_" not in p.parts]
+        # For validation, retrieve images excluding augmentation folders
+        images = [p for p in path.rglob("*.png") if "aug_" not in p.parts]
     else:
-        # For training, include augmented images
-        return [p for p in path.rglob("*.png")]
+        # For training, retrieve all images including in augmentation folders
+        images = list(path.rglob("*.png"))
+    
+    # Debug: Check number of images found
+    print(f"Debug: Found {len(images)} images in {'validation' if valid else 'training'} set.")
+    return images
 
-def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
+def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False):
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
 
-    # Training and validation paths
+    # Paths for training and validation
     train_path = Path(ds_directory) / "train"
     valid_path = Path(ds_directory) / ds_valid
 
     multiDHG1428 = DataBlock(
-        blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
+        blocks=(ImageBlock, CategoryBlock),
         get_items=get_image_files_augmented,
         get_y=lambda path: path.parent.parent.name if "aug_" in path.parts else path.parent.name,
         splitter=GrandparentSplitter(train_name='train', valid_name=ds_valid),
         item_tfms=Resize(img_size),
-        batch_tfms=tfms  # Apply augmentations to training images only
+        batch_tfms=tfms
     )
 
+    # Create data loaders
     dls = multiDHG1428.dataloaders(ds_directory, bs=bs, shuffle=shuffle)
 
+    # Debug: Preview dataset if required
     if preview:
         dls.show_batch(max_n=4, figsize=(12, 12))
+    
     return dls if return_dls else multiDHG1428
 
 # def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
