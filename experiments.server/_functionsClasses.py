@@ -224,7 +224,6 @@ def custom_splitter(items):
     """
     is_valid = ["valid" in str(item) for item in items]
     return [i for i, valid in enumerate(is_valid) if not valid], [i for i, valid in enumerate(is_valid) if valid]
-
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False):
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
@@ -238,9 +237,11 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     def get_y(path):
         # Adjust label extraction based on aug_* folder presence
         if "aug_" in path.parts:
-            return path.parent.parent.name  # Parent of augmentation folder
+            label = path.parent.parent.name  # Parent of augmentation folder
         else:
-            return path.parent.name  # Direct parent folder for non-augmented
+            label = path.parent.name  # Direct parent folder for non-augmented
+        print(f"Debug: Label for {path} is {label}")
+        return label
 
     multiDHG1428 = DataBlock(
         blocks=(ImageBlock, CategoryBlock),
@@ -251,11 +252,15 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         batch_tfms=tfms
     )
 
-    # Create data loaders
+    # Create data loaders and preview batch structure
     dls = multiDHG1428.dataloaders(ds_directory, bs=bs, shuffle=shuffle)
-
     if preview:
         dls.show_batch(max_n=4, figsize=(12, 12))
+    
+    print("Debug: DataLoader created, checking batch structure...")
+    for batch in dls.train:  # Access a batch to check its structure
+        print("Sample batch:", batch)
+        break  # Print only the first batch
     
     return dls if return_dls else multiDHG1428
 
