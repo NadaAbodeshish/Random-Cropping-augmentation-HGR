@@ -224,10 +224,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     )
 
     # Get train and valid items separately
-    train_items, valid_items = get_gesture_sequences(ds_directory)
-    print(f"Train items: {[str(item) for item in train_items[:1]]}...")  # Show a sample of train items
-    print(f"Valid items: {[str(item) for item in valid_items[:1]]}...")  # Show a sample of valid items
-    paths = [Path(p) for p in get_gesture_sequences(ds_directory)]
+    paths = [Path(p) for p in list(get_gesture_sequences(ds_directory))]
 
     # Define the DataBlock with manual splitting and custom get_y
     multiDHG1428 = DataBlock(
