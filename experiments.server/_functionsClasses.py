@@ -158,21 +158,9 @@ class e2eTunerImageTuples(fastuple):
 def e2eTunerImageTupleBlock():
     return TransformBlock(type_tfms=e2eTunerImageTuples.create, batch_tfms=IntToFloatTensor)
 
-from pathlib import Path
-def get_gesture_sequences(ds_directory, ds_valid="valid"):
-    gesture_sequences = []
-    for gesture_folder in Path(ds_directory).rglob('*'):
-        if gesture_folder.is_dir():
-            if ds_valid in str(gesture_folder):
-                # Handling valid items without aug_* folders
-                gesture_sequences += list(gesture_folder.glob('**/*.png'))
-            else:
-                # Handling train items with aug_* folders
-                for aug_folder in gesture_folder.glob('aug_*'):
-                    gesture_sequences += list(aug_folder.glob('*.png'))
-    print(f"Debug: Total gesture sequences found: {len(gesture_sequences)}")
-    return gesture_sequences
-
+def get_gesture_sequences(path):
+    files = get_image_files(path)
+    return L(dict.fromkeys([f.parent for f in files]))
 
 def get_orientation_images(o):
     # Ensure paths are constructed only once for each orientation without extra path nesting
@@ -199,78 +187,65 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     return ctxs
 
 
-def get_gesture_type(o):
-    """Extracts the gesture type from the file path."""
-    return o.parent.parent.name 
-
-def custom_splitter(items):
-    """
-    Split images based on folder structure.
-    Assumes 'train' and 'valid' folders at a higher level.
-    """
-    is_valid = ["valid" in str(item) for item in items]
-    return [i for i, valid in enumerate(is_valid) if not valid], [i for i, valid in enumerate(is_valid) if valid]
-
-
-def get_image_files_augmented(path, valid=False):
-    """
-    Fetch all image files, handling augmented folders.
-    """
-    path = Path(path)
-    if valid:
-        # For validation, exclude augmented folders
-        images = [p for p in path.rglob("*.png") if "aug_" not in p.parts]
-    else:
-        # For training, include all images
-        images = list(path.rglob("*.png"))
-    print(f"Debug: Found {len(images)} images in {'validation' if valid else 'training'} set.")
-    return images
-
-def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", preview=False, e2eTunerMode=False):
+def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", 
+                               e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
+    # Data augmentation for training
+    tfms = aug_transforms(
+        do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
+        max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
+    )
+    
+    # Separate paths for train and validation
     train_path = Path(ds_directory) / "train"
     valid_path = Path(ds_directory) / ds_valid
 
-    def get_y(path):
-        # Extract label based on folder structure, handling aug_* folders
-        if "aug_" in path.parts:
-            label = path.parent.parent.name
-        else:
-            label = path.parent.name
-        print(f"Debug: Label for {path} is {label}")
-        return label
+    # Collect train paths including 'aug_*' subdirectories
+    train_items = [p for p in train_path.rglob('*/*.png') if 'aug_' in str(p.parent)]
+    valid_items = list(valid_path.rglob('*/*.png'))  # Only original structure for validation
 
-    def get_items(path):
-        # Differentiate between training and validation data
-        if "valid" in path.parts:
-            return get_image_files_augmented(valid_path, valid=True)
-        else:
-            return get_image_files_augmented(train_path, valid=False)
+    print(f"Debug: Found {len(train_items)} images in training set.")
+    print(f"Debug: Found {len(valid_items)} images in validation set.")
 
-    # Configure DataBlock to handle the dataset
+    # Define DataBlock for consistent handling of paths
     multiDHG1428 = DataBlock(
-        blocks=(ImageBlock, CategoryBlock),
-        get_items=get_items,
-        get_y=get_y,
-        splitter=GrandparentSplitter(train_name='train', valid_name=ds_valid),
-        item_tfms=Resize(img_size),
-        batch_tfms=aug_transforms()
+        blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
+        get_items=lambda p: train_items + valid_items,  # Combine training and validation items
+        get_x=get_orientation_images,
+        get_y=get_gesture_type,
+        splitter=IndexSplitter([i for i in range(len(train_items), len(train_items) + len(valid_items))]),
+        item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
+        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)] if return_dls else None,  # Apply augmentation only in train
     )
 
-    # Load data using the configured DataBlock
-    dls = multiDHG1428.dataloaders(train_path.parent, bs=bs, shuffle=shuffle)
+    try:
+        ds = multiDHG1428.datasets(ds_directory, verbose=False)
+        print(f"Debug: Number of items in training split: {len(ds.train)}")
+        print(f"Debug: Number of items in validation split: {len(ds.valid)}")
 
-    # Preview batch structure
-    if preview:
-        dls.show_batch(max_n=4, figsize=(12, 12))
+        # Ensure splits are non-empty
+        if len(ds.train) == 0 or len(ds.valid) == 0:
+            raise ValueError("Error: One of the dataset splits is empty. Check the directory structure.")
 
-    # Debug output for checking batch structure
-    print("Debug: Checking batch structure...")
-    for batch in dls.train:
-        print("Sample batch:", batch)
-        break  # Check only the first batch
-    
-    return dls if return_dls else multiDHG1428
+        if return_dls:
+            dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, 
+                                           device=defaults.device, shuffle=shuffle, num_workers=0)
+            print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {dls.c}")
+            print(f"Debug: Detected class vocab: {dls.vocab}")
 
+            assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
+
+            if preview:
+                print(f"Dataloader created successfully with {len(dls.vocab)} classes: {dls.vocab}")
+                dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
+            else:
+                clear_output(wait=False)
+
+            return dls
+
+        return ds
+    except Exception as e:
+        print(f"Debug: Dataset creation failed with paths: {train_items[:5]}...")  # Show a sample of the paths for debugging
+        raise ValueError(f"Error creating datasets: {e}")
 # def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
 #     tfms = aug_transforms(
 #         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
