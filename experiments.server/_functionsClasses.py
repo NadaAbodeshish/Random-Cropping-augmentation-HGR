@@ -203,20 +203,6 @@ def get_gesture_type(o):
     """Extracts the gesture type from the file path."""
     return o.parent.parent.name 
 
-
-def get_image_files_augmented(path, valid=False):
-    """
-    Fetch all image files, handling augmented folders.
-    """
-    path = Path(path)
-    # print(f"Debug: Fetching images from {'validation' if valid else 'training'} path - {path}")
-    if valid:
-        images = [p for p in path.rglob("*.png") if "aug_" not in p.parts]
-    else:
-        images = list(path.rglob("*.png"))
-    # print(f"Debug: Found {len(images)} images in {'validation' if valid else 'training'} set.")
-    return images
-
 def custom_splitter(items):
     """
     Split images based on folder structure.
@@ -231,40 +217,54 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
 
-    # Paths for training and validation
+    # Define paths for training and validation data
     train_path = Path(ds_directory) / "train"
     valid_path = Path(ds_directory) / ds_valid
 
+    def get_image_files_augmented(path):
+        """
+        Fetch all image files, handling augmented folders.
+        """
+        path = Path(path)
+        print(f"Debug: Fetching images from path - {path}")
+        if "valid" in path.parts:
+            images = [p for p in path.rglob("*.png") if "aug_" not in p.parts]
+        else:
+            images = list(path.rglob("*.png"))
+        print(f"Debug: Found {len(images)} images in {'validation' if 'valid' in path.parts else 'training'} set.")
+        return images
+
     def get_y(path):
-        # Adjust label extraction based on aug_* folder presence
+        # Extract label based on folder structure
         if "aug_" in path.parts:
             label = path.parent.parent.name  # Parent of augmentation folder
         else:
             label = path.parent.name  # Direct parent folder for non-augmented
-        # print(f"Debug: Label for {path} is {label}")
+        print(f"Debug: Label for {path} is {label}")
         return label
 
     multiDHG1428 = DataBlock(
         blocks=(ImageBlock, CategoryBlock),
         get_items=get_image_files_augmented,
         get_y=get_y,
-        splitter=custom_splitter,
+        splitter=GrandparentSplitter(train_name='train', valid_name=ds_valid),
         item_tfms=Resize(img_size),
         batch_tfms=tfms
     )
 
-    # Create data loaders and preview batch structure
-    dls = multiDHG1428.dataloaders(ds_directory, bs=bs, shuffle=shuffle)
+    # Use the defined paths for loading data
+    dls = multiDHG1428.dataloaders(train_path.parent, bs=bs, shuffle=shuffle)
+
+    # Preview batch structure
     if preview:
         dls.show_batch(max_n=4, figsize=(12, 12))
-    
+
     print("Debug: DataLoader created, checking batch structure...")
-    for batch in dls.train:  # Access a batch to check its structure
-        # print("Sample batch:", batch)
-        break  # Print only the first batch
+    for batch in dls.train:
+        print("Sample batch:", batch)
+        break  # Check only the first batch
     
     return dls if return_dls else multiDHG1428
-
 
 # def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
 #     tfms = aug_transforms(
