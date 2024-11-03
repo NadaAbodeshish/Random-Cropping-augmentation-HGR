@@ -209,12 +209,12 @@ def get_image_files_augmented(path, valid=False):
     Fetch all image files, handling augmented folders.
     """
     path = Path(path)
-    print(f"Debug: Fetching images from {'validation' if valid else 'training'} path - {path}")
+    # print(f"Debug: Fetching images from {'validation' if valid else 'training'} path - {path}")
     if valid:
         images = [p for p in path.rglob("*.png") if "aug_" not in p.parts]
     else:
         images = list(path.rglob("*.png"))
-    print(f"Debug: Found {len(images)} images in {'validation' if valid else 'training'} set.")
+    # print(f"Debug: Found {len(images)} images in {'validation' if valid else 'training'} set.")
     return images
 
 def custom_splitter(items):
@@ -224,6 +224,7 @@ def custom_splitter(items):
     """
     is_valid = ["valid" in str(item) for item in items]
     return [i for i, valid in enumerate(is_valid) if not valid], [i for i, valid in enumerate(is_valid) if valid]
+
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False):
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
@@ -240,7 +241,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
             label = path.parent.parent.name  # Parent of augmentation folder
         else:
             label = path.parent.name  # Direct parent folder for non-augmented
-        print(f"Debug: Label for {path} is {label}")
+        # print(f"Debug: Label for {path} is {label}")
         return label
 
     multiDHG1428 = DataBlock(
@@ -259,7 +260,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     
     print("Debug: DataLoader created, checking batch structure...")
     for batch in dls.train:  # Access a batch to check its structure
-        print("Sample batch:", batch)
+        # print("Sample batch:", batch)
         break  # Print only the first batch
     
     return dls if return_dls else multiDHG1428
