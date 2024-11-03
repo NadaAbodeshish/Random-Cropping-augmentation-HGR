@@ -185,6 +185,27 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     # ---
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
+from pathlib import Path
+
+def get_gesture_type(path):
+    """
+    Extracts the gesture type from the given path.
+    
+    Args:
+        path (Path or str): The file path from which to extract the gesture type.
+    
+    Returns:
+        str: The gesture type, which corresponds to the parent folder name for each gesture.
+    """
+    # Convert to Path object if necessary
+    path = Path(path)
+    
+    # The gesture type should be the parent directory immediately before "f*s*e*"
+    # Example path: ../train/05-RotationCW/f1s3e4/aug_2/top-down.png
+    # We take the second parent for "05-RotationCW"
+    gesture_type = path.parts[-3]  # Adjust index based on path depth if needed
+    
+    return gesture_type
 
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", 
