@@ -226,7 +226,8 @@ def get_image_files_augmented(path, valid=False):
     print(f"Debug: Found {len(images)} images in {'validation' if valid else 'training'} set.")
     return images
 
-def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", preview=False):
+def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", preview=False, e2eTunerMode=False):
+    # Function content here
     train_path = Path(ds_directory) / "train"
     valid_path = Path(ds_directory) / ds_valid
 
@@ -257,7 +258,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     )
 
     # Load data using train_path.parent to handle both train and valid sets
-    dls = multiDHG1428.dataloaders(train_path.parent, bs=bs, shuffle=shuffle)
+    dls = multiOrientationDataLoader(deets.ds_directory, bs=args.bs, img_size=args.init_img_sz, preview=True)
 
     # Preview batch structure
     if preview:
