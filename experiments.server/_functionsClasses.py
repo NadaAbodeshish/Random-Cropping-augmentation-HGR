@@ -227,7 +227,6 @@ def get_image_files_augmented(path, valid=False):
     return images
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", preview=False, e2eTunerMode=False):
-    # Function content here
     train_path = Path(ds_directory) / "train"
     valid_path = Path(ds_directory) / ds_valid
 
@@ -257,8 +256,8 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         batch_tfms=aug_transforms()
     )
 
-    # Load data using train_path.parent to handle both train and valid sets
-    dls = multiOrientationDataLoader(deets.ds_directory, bs=args.bs, img_size=args.init_img_sz, preview=True)
+    # Load data using the configured DataBlock
+    dls = multiDHG1428.dataloaders(train_path.parent, bs=bs, shuffle=shuffle)
 
     # Preview batch structure
     if preview:
@@ -271,7 +270,6 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         break  # Check only the first batch
     
     return dls if return_dls else multiDHG1428
-
 
 # def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
 #     tfms = aug_transforms(
