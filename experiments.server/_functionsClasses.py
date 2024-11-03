@@ -203,7 +203,7 @@ def get_gesture_type(path):
     # The gesture type should be the parent directory immediately before "f*s*e*"
     # Example path: ../train/05-RotationCW/f1s3e4/aug_2/top-down.png
     # We take the second parent for "05-RotationCW"
-    gesture_type = path.parts[-3]  # Adjust index based on path depth if needed
+    gesture_type = path.parts[-4]  # Adjust index based on path depth if needed
     
     return gesture_type
 
