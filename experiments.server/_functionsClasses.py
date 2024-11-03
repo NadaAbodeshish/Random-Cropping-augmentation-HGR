@@ -185,88 +185,75 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     # ---
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
-from pathlib import Path
 
 def get_gesture_type(path):
     """
-    Extracts the gesture type from the given path.
+    Extracts the gesture type from the directory two levels above the image file.
     
     Args:
-        path (Path or str): The file path from which to extract the gesture type.
-    
+        path (Path or str): Path to an image file.
+
     Returns:
-        str: The gesture type, which corresponds to the parent folder name for each gesture.
+        str: The gesture type extracted from the path.
     """
-    # Convert to Path object if necessary
     path = Path(path)
-    
-    # The gesture type should be the parent directory immediately before "f*s*e*"
-    # Example path: ../train/05-RotationCW/f1s3e4/aug_2/top-down.png
-    # We take the second parent for "05-RotationCW"
-    gesture_type = path.parts[-4]  # Adjust index based on path depth if needed
-    
-    return gesture_type
+    return path.parts[-4]  # Adjusting to the correct parent for gesture type
 
 
-def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", 
-                               e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
-    # Data augmentation for training
+
+def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
-    
-    # Separate paths for train and validation
-    train_path = Path(ds_directory) / "train"
-    valid_path = Path(ds_directory) / ds_valid
 
-    # Collect train paths including 'aug_*' subdirectories
-    train_items = [p for p in train_path.rglob('*/*.png') if 'aug_' in str(p.parent)]
-    valid_items = list(valid_path.rglob('*/*.png'))  # Only original structure for validation
+    # Collecting gesture sequence paths
+    gesture_sequences = get_gesture_sequences(ds_directory)
+    paths = [Path(p) for p in gesture_sequences]
+    print(f"Debug: Total items found: {len(paths)}")
 
-    print(f"Debug: Found {len(train_items)} images in training set.")
-    print(f"Debug: Found {len(valid_items)} images in validation set.")
-
-    # Define DataBlock for consistent handling of paths
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=lambda p: train_items + valid_items,  # Combine training and validation items
+        get_items=lambda p: paths,  # Use lambda to pass the processed paths
         get_x=get_orientation_images,
-        get_y=get_gesture_type,
-        splitter=IndexSplitter([i for i in range(len(train_items), len(train_items) + len(valid_items))]),
+        get_y=get_gesture_type,  # Extract gesture type correctly
+        splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)] if return_dls else None,  # Apply augmentation only in train
+        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
     )
 
-    try:
-        ds = multiDHG1428.datasets(ds_directory, verbose=False)
-        print(f"Debug: Number of items in training split: {len(ds.train)}")
-        print(f"Debug: Number of items in validation split: {len(ds.valid)}")
+    # Generate datasets and validate splits
+    ds = multiDHG1428.datasets(ds_directory, verbose=False)
+    print(f"Debug: Number of items in training split: {len(ds.train)}")
+    print(f"Debug: Number of items in validation split: {len(ds.valid)}")
+    print(f"Debug: Detected classes: {ds.vocab}")
 
-        # Ensure splits are non-empty
-        if len(ds.train) == 0 or len(ds.valid) == 0:
-            raise ValueError("Error: One of the dataset splits is empty. Check the directory structure.")
+    if return_dls:
+        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
+        
+        print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {dls.c}")
+        print(f"Debug: Detected class vocab: {dls.vocab}")
 
-        if return_dls:
-            dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, 
-                                           device=defaults.device, shuffle=shuffle, num_workers=0)
-            print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {dls.c}")
-            print(f"Debug: Detected class vocab: {dls.vocab}")
+        assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
 
-            assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
+        if preview:
+            print(dedent(f"""
+            Dataloader has been created successfully...
+            The dataloader has {len(dls.vocab)} ({dls.c}) classes: {dls.vocab}
+            Training set [len={len(dls.train.items)}, img_sz={get_mVOs_img_size(dls.train)}] loaded on device: {dls.train.device}
+            Validation set [len={len(dls.valid.items)}, img_sz={get_mVOs_img_size(dls.valid)}] loaded on device: {dls.valid.device}
+            Previewing loaded data [1] and applied transforms [2]...
+            """))
+            dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
+            dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
+        else:
+            clear_output(wait=False)
 
-            if preview:
-                print(f"Dataloader created successfully with {len(dls.vocab)} classes: {dls.vocab}")
-                dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
-            else:
-                clear_output(wait=False)
+        return dls
 
-            return dls
-
+    else:
         return ds
-    except Exception as e:
-        print(f"Debug: Dataset creation failed with paths: {train_items[:5]}...")  # Show a sample of the paths for debugging
-        raise ValueError(f"Error creating datasets: {e}")
+
 # def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
 #     tfms = aug_transforms(
 #         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
