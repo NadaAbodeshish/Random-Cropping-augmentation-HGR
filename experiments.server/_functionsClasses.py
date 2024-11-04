@@ -182,15 +182,14 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
 
-
 def get_gesture_sequences(ds_directory, ds_valid="valid"):
-    """Function to get train and valid image paths, handling aug_* in train and no aug_* in valid"""
+    """Function to get train and valid image paths, handling aug_* in train and ensuring images in valid"""
     train_sequences, valid_sequences = [], []
     
     train_path = Path(ds_directory) / "train"
     valid_path = Path(ds_directory) / ds_valid
     
-    # Collect paths for training data, including augmented directories
+    # Collect paths for training data, including images in aug_* directories
     for gesture_dir in train_path.iterdir():
         if gesture_dir.is_dir():
             for seq_dir in gesture_dir.iterdir():
@@ -199,12 +198,16 @@ def get_gesture_sequences(ds_directory, ds_valid="valid"):
                         if aug_dir.is_dir() and aug_dir.name.startswith("aug_"):
                             train_sequences.extend(aug_dir.glob("*.png"))
                         elif aug_dir.is_file():
-                            train_sequences.append(aug_dir)  # Handle any non-aug paths directly
+                            train_sequences.append(aug_dir)  # Handle non-aug files directly
 
     # Collect paths for validation data (no aug_* folders expected)
     for gesture_dir in valid_path.iterdir():
         if gesture_dir.is_dir():
             valid_sequences.extend(gesture_dir.glob("*.png"))
+    
+    # Add debugging statements to check what was collected
+    print(f"Debug: Found {len(train_sequences)} images in training set.")
+    print(f"Debug: Found {len(valid_sequences)} images in validation set.")
     
     return train_sequences, valid_sequences
 
@@ -231,9 +234,6 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         raise ValueError("Error: No images found in the training set.")
     if not valid_sequences:
         raise ValueError("Error: No images found in the validation set.")
-
-    print(f"Debug: Found {len(train_sequences)} images in training set.")
-    print(f"Debug: Found {len(valid_sequences)} images in validation set.")
 
     # Setup DataBlock with correct label extraction
     multiDHG1428 = DataBlock(
