@@ -241,40 +241,45 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
 
-    # Get the train and validation sequences
+    # Obtain sequences and ensure paths are correct for both splits
     train_sequences, valid_sequences = get_gesture_sequences(ds_directory, ds_valid)
 
-    # Validate splits
-    if len(train_sequences) == 0:
+    # Sanity check: Ensure we have non-empty splits
+    if not train_sequences:
         raise ValueError("Error: No images found in the training set.")
-    if len(valid_sequences) == 0:
+    if not valid_sequences:
         raise ValueError("Error: No images found in the validation set.")
 
     print(f"Debug: Found {len(train_sequences)} images in training set.")
     print(f"Debug: Found {len(valid_sequences)} images in validation set.")
 
-    # Setup DataBlock
+    # Setup DataBlock with correct label extraction
     multiDHG1428 = DataBlock(
         blocks=(ImageTupleBlock, CategoryBlock),
         get_items=lambda p: train_sequences + valid_sequences,
         get_x=get_orientation_images,
-        get_y=lambda p: p.parent.parent.name if p.parent.name.startswith("aug_") else p.parent.name,  # Handle nested aug_* correctly
+        get_y=lambda p: p.parent.parent.name if p.parent.name.startswith("aug_") else p.parent.name,
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
     )
 
     try:
-        # Generate datasets and check splits
+        # Create datasets and check split counts
         ds = multiDHG1428.datasets(ds_directory, verbose=False)
         print(f"Debug: Number of items in training split: {len(ds.train)}")
         print(f"Debug: Number of items in validation split: {len(ds.valid)}")
+
+        if len(ds.train) == 0 or len(ds.valid) == 0:
+            raise ValueError("Error: One of the dataset splits is empty.")
     except Exception as e:
         raise ValueError(f"Error creating datasets: {e}")
 
+    # Load data loaders if specified
     if return_dls:
         dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
         
+        # Check that the number of classes is correct
         print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {dls.c}")
         print(f"Debug: Detected class vocab: {dls.vocab}")
 
