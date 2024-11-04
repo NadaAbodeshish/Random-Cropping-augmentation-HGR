@@ -197,7 +197,7 @@ def get_gesture_sequences(ds_directory, ds_valid="valid"):
     # Process training images
     train_path = Path(ds_directory) / 'train'
     for class_folder in train_path.iterdir():
-        if class_folder.is_dir():  # Only consider directories
+        if class_folder.is_dir():  # Only consider directories (gesture classes)
             for fse_folder in class_folder.iterdir():
                 if fse_folder.is_dir():
                     for aug_folder in fse_folder.iterdir():
@@ -208,7 +208,7 @@ def get_gesture_sequences(ds_directory, ds_valid="valid"):
     # Process validation images
     valid_path = Path(ds_directory) / ds_valid
     for class_folder in valid_path.iterdir():
-        if class_folder.is_dir():  # Only consider directories
+        if class_folder.is_dir():  # Only consider directories (gesture classes)
             for fse_folder in class_folder.iterdir():
                 if fse_folder.is_dir():
                     for image_file in fse_folder.glob("*.png"):
@@ -218,12 +218,11 @@ def get_gesture_sequences(ds_directory, ds_valid="valid"):
     print(f"Debug: Found {len(valid_sequences)} images in validation set.")
 
     return train_sequences, valid_sequences
-
 def multiOrientationDataLoader(ds_directory, bs, img_size, n_classes=None, shuffle=True, e2eTunerMode=False, preview=False):
     train_sequences, valid_sequences = get_gesture_sequences(ds_directory)
-    
+
     # Get the unique class names from the folder names in the training set
-    gesture_classes = sorted(set(path.parent.parent.name for path in train_sequences))
+    gesture_classes = sorted(set(path.parent.parent.name for path in train_sequences))  # Extract only the class folder name
     if n_classes is None:
         n_classes = len(gesture_classes)
 
