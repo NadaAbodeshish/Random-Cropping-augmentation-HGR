@@ -191,10 +191,10 @@ def get_gesture_type(p):
         return p.parent.name         # For validation, class is one level up
     
 
-def get_gesture_sequences(ds_directory, ds_valid="valid"):
+def get_gesture_sequences(ds_directory, ds_valid="valid", img_ext=".png"):
     """
     Retrieves gesture sequences for both training and validation sets, handling nested 'aug_*' folders
-    in the training set and direct image files in the validation set.
+    in the training set and variable `f*s*e*` subdirectories in the validation set.
     """
     train_path = Path(ds_directory) / "train"
     valid_path = Path(ds_directory) / ds_valid
@@ -206,22 +206,22 @@ def get_gesture_sequences(ds_directory, ds_valid="valid"):
     for gesture_dir in train_path.glob("*"):
         if gesture_dir.is_dir():
             for session_dir in gesture_dir.glob("*/aug_*"):
-                train_sequences.extend(session_dir.glob("*.png"))
+                train_sequences.extend(session_dir.glob(f"*{img_ext}"))
+    print(f"Debug: Found {len(train_sequences)} images in training set.")
 
+    # Traverse the validation directory with wildcard pattern for `f*s*e*` and `f**s**e**`
     for gesture_dir in valid_path.glob("*"):
-            if gesture_dir.is_dir():
-                print(f"Debug: Checking validation folder: {gesture_dir}")  # Debugging folder structure
-                for img in gesture_dir.glob("*.png"):
-                    print(f"Debug: Adding validation file {img}")  # Debugging each validation image path
-                    valid_sequences.append(img)
-
+        if gesture_dir.is_dir():
+            print(f"Debug: Checking validation folder: {gesture_dir}")  # Debugging folder structure
+            for subfolder in gesture_dir.glob("f*e*"):  # Generalized pattern to capture both formats
+                valid_sequences.extend(subfolder.glob(f"*{img_ext}"))
 
     # Debugging information to verify counts
     print(f"Debug: Found {len(valid_sequences)} images in validation set.")
 
     # Raise an error if validation set is empty to prevent downstream issues
     if len(valid_sequences) == 0:
-        raise ValueError("Error: No images found in the validation set.")
+        raise ValueError("Error: No images found in the validation set. Check if the directory structure and file paths match expected patterns.")
 
     return train_sequences, valid_sequences
 
