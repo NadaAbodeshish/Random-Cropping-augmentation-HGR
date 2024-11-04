@@ -168,13 +168,13 @@ def get_gesture_sequences(ds_directory, ds_valid="valid"):
         ds_valid (str): Directory name for the validation set.
 
     Returns:
-        list: List of paths for each gesture sequence image.
+        tuple: Two lists - one for training images and one for validation images.
     """
     ds_directory = Path(ds_directory)
     train_path = ds_directory / 'train'
     valid_path = ds_directory / ds_valid
 
-    # Collect images for training with `aug_*` subdirectories
+    # Collect images for training set with `aug_*` subdirectories
     train_sequences = []
     for gesture_dir in train_path.iterdir():
         if gesture_dir.is_dir():
@@ -183,16 +183,17 @@ def get_gesture_sequences(ds_directory, ds_valid="valid"):
                     if aug_dir.is_dir():
                         train_sequences.extend(aug_dir.glob("*.png"))
 
-    # Collect images for validation without `aug_*` subdirectories
+    # Collect images for validation set without `aug_*` subdirectories
     valid_sequences = []
     for gesture_dir in valid_path.iterdir():
         if gesture_dir.is_dir():
-            valid_sequences.extend(gesture_dir.glob("*.png"))
+            for sequence_dir in gesture_dir.iterdir():
+                if sequence_dir.is_dir():
+                    valid_sequences.extend(sequence_dir.glob("*.png"))
 
     print(f"Debug: Found {len(train_sequences)} images in training set.")
     print(f"Debug: Found {len(valid_sequences)} images in validation set.")
     return train_sequences, valid_sequences
-
 
 def get_orientation_images(o):
     # Ensure paths are constructed only once for each orientation without extra path nesting
