@@ -235,7 +235,6 @@ def get_gesture_type(path):
     return path.parts[-4]  # Adjusting to the correct parent for gesture type
 
 
-
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
@@ -245,25 +244,33 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     # Get the train and validation sequences
     train_sequences, valid_sequences = get_gesture_sequences(ds_directory, ds_valid)
 
-    # Ensure splits are valid
-    if len(train_sequences) == 0 or len(valid_sequences) == 0:
-        raise ValueError("Error: One of the dataset splits is empty. Check if images are missing.")
+    # Validate splits
+    if len(train_sequences) == 0:
+        raise ValueError("Error: No images found in the training set.")
+    if len(valid_sequences) == 0:
+        raise ValueError("Error: No images found in the validation set.")
+
+    print(f"Debug: Found {len(train_sequences)} images in training set.")
+    print(f"Debug: Found {len(valid_sequences)} images in validation set.")
 
     # Setup DataBlock
     multiDHG1428 = DataBlock(
         blocks=(ImageTupleBlock, CategoryBlock),
         get_items=lambda p: train_sequences + valid_sequences,
         get_x=get_orientation_images,
-        get_y=lambda p: p.parent.parent.name if p.parent.name.startswith("aug_") else p.parent.name,  # To correctly categorize gestures
+        get_y=lambda p: p.parent.parent.name if p.parent.name.startswith("aug_") else p.parent.name,  # Handle nested aug_* correctly
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
     )
 
-    # Generate datasets and validate splits
-    ds = multiDHG1428.datasets(ds_directory, verbose=False)
-    print(f"Debug: Number of items in training split: {len(ds.train)}")
-    print(f"Debug: Number of items in validation split: {len(ds.valid)}")
+    try:
+        # Generate datasets and check splits
+        ds = multiDHG1428.datasets(ds_directory, verbose=False)
+        print(f"Debug: Number of items in training split: {len(ds.train)}")
+        print(f"Debug: Number of items in validation split: {len(ds.valid)}")
+    except Exception as e:
+        raise ValueError(f"Error creating datasets: {e}")
 
     if return_dls:
         dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
