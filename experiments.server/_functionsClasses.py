@@ -158,45 +158,6 @@ class e2eTunerImageTuples(fastuple):
 def e2eTunerImageTupleBlock():
     return TransformBlock(type_tfms=e2eTunerImageTuples.create, batch_tfms=IntToFloatTensor)
 
-def get_gesture_sequences(ds_directory, ds_valid="valid"):
-    """
-    Collects gesture sequence paths for the training and validation sets.
-
-    Args:
-        ds_directory (str or Path): Root directory of the dataset.
-        ds_valid (str): Directory name for the validation set.
-
-    Returns:
-        tuple: Two lists - one for training images and one for validation images.
-    """
-    ds_directory = Path(ds_directory)
-    train_path = ds_directory / 'train'
-    valid_path = ds_directory / ds_valid
-
-    train_sequences = []
-    for gesture_dir in train_path.iterdir():
-        if gesture_dir.is_dir() and gesture_dir.name != ds_valid:
-            for sequence_dir in gesture_dir.iterdir():
-                for aug_dir in sequence_dir.glob('aug_*'):
-                    if aug_dir.is_dir():
-                        train_sequences.extend(aug_dir.glob("*.png"))
-
-    valid_sequences = []
-    for gesture_dir in valid_path.iterdir():
-        if gesture_dir.is_dir():
-            for sequence_dir in gesture_dir.iterdir():
-                valid_sequences.extend(sequence_dir.glob("*.png"))
-
-    # Sanity checks to ensure directories have valid data
-    if not train_sequences:
-        raise ValueError("Error: No images found in the training set.")
-    if not valid_sequences:
-        raise ValueError("Error: No images found in the validation set.")
-
-    print(f"Debug: Found {len(train_sequences)} images in training set.")
-    print(f"Debug: Found {len(valid_sequences)} images in validation set.")
-    return train_sequences, valid_sequences
-
 def get_orientation_images(o):
     # Ensure paths are constructed only once for each orientation without extra path nesting
     return [o.parent / f"{orientation}.png" for orientation in args.mv_orientations]
@@ -221,19 +182,40 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
 
-def get_gesture_type(path):
-    """
-    Extracts the gesture type from the directory two levels above the image file.
+
+def get_gesture_sequences(ds_directory, ds_valid="valid"):
+    """Function to get train and valid image paths, handling aug_* in train and no aug_* in valid"""
+    train_sequences, valid_sequences = [], []
     
-    Args:
-        path (Path or str): Path to an image file.
+    train_path = Path(ds_directory) / "train"
+    valid_path = Path(ds_directory) / ds_valid
+    
+    # Collect paths for training data, including augmented directories
+    for gesture_dir in train_path.iterdir():
+        if gesture_dir.is_dir():
+            for seq_dir in gesture_dir.iterdir():
+                if seq_dir.is_dir():
+                    for aug_dir in seq_dir.iterdir():
+                        if aug_dir.is_dir() and aug_dir.name.startswith("aug_"):
+                            train_sequences.extend(aug_dir.glob("*.png"))
+                        elif aug_dir.is_file():
+                            train_sequences.append(aug_dir)  # Handle any non-aug paths directly
 
-    Returns:
-        str: The gesture type extracted from the path.
-    """
-    path = Path(path)
-    return path.parts[-4]  # Adjusting to the correct parent for gesture type
+    # Collect paths for validation data (no aug_* folders expected)
+    for gesture_dir in valid_path.iterdir():
+        if gesture_dir.is_dir():
+            valid_sequences.extend(gesture_dir.glob("*.png"))
+    
+    return train_sequences, valid_sequences
 
+def get_gesture_type(p):
+    """Extract the gesture type (class) from the path, handling the structure for both train and valid sets"""
+    if "train" in str(p):
+        # Move up two directories to reach the gesture name for train images
+        return p.parent.parent.name
+    else:
+        # Only one level up for valid images
+        return p.parent.name
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
     tfms = aug_transforms(
@@ -244,7 +226,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     # Obtain sequences and ensure paths are correct for both splits
     train_sequences, valid_sequences = get_gesture_sequences(ds_directory, ds_valid)
 
-    # Sanity check: Ensure we have non-empty splits
+    # Check for empty splits to prevent downstream errors
     if not train_sequences:
         raise ValueError("Error: No images found in the training set.")
     if not valid_sequences:
@@ -258,7 +240,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         blocks=(ImageTupleBlock, CategoryBlock),
         get_items=lambda p: train_sequences + valid_sequences,
         get_x=get_orientation_images,
-        get_y=lambda p: p.parent.parent.name if p.parent.name.startswith("aug_") else p.parent.name,
+        get_y=get_gesture_type,
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
@@ -302,6 +284,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
 
     else:
         return ds
+
 
 # def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
 #     tfms = aug_transforms(
