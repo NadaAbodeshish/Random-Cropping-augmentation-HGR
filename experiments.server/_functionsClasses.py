@@ -190,44 +190,35 @@ def get_gesture_type(p):
     else:
         return p.parent.name         # For validation, class is one level up
 
-def get_gesture_sequences(ds_directory, ds_valid="valid", img_ext=".png"):
-    """
-    Retrieves gesture sequences for both training and validation sets, handling nested `aug_*` folders
-    in the training set and variable `f*s*e*` subdirectories in the validation set.
-    """
-    train_path = Path(ds_directory) / "train"
-    valid_path = Path(ds_directory) / ds_valid
-
+def get_gesture_sequences(ds_directory, ds_valid="valid"):
     train_sequences = []
     valid_sequences = []
-    class_names = set()  # Track class names for validation
 
-    # Traverse the training directory, accounting for `aug_*` subdirectories
-    for gesture_dir in train_path.glob("*"):
-        if gesture_dir.is_dir():
-            class_names.add(gesture_dir.name)  # Store class name
-            for session_dir in gesture_dir.glob("*/aug_*"):
-                train_sequences.extend(session_dir.glob(f"*{img_ext}"))
+    # Loop through each class folder for training
+    train_path = Path(ds_directory) / 'train'
+    for class_folder in train_path.iterdir():
+        if class_folder.is_dir():
+            for fse_folder in class_folder.iterdir():
+                if fse_folder.is_dir():
+                    for aug_folder in fse_folder.iterdir():
+                        if aug_folder.is_dir():
+                            for image_file in aug_folder.glob("*.png"):
+                                train_sequences.append(image_file)
+
+    # Loop through each class folder for validation
+    valid_path = Path(ds_directory) / ds_valid
+    for class_folder in valid_path.iterdir():
+        if class_folder.is_dir():
+            for fse_folder in class_folder.iterdir():
+                if fse_folder.is_dir():
+                    for image_file in fse_folder.glob("*.png"):
+                        valid_sequences.append(image_file)
 
     print(f"Debug: Found {len(train_sequences)} images in training set.")
-
-    # Traverse the validation directory with correct class and subdirectory handling
-    for gesture_dir in valid_path.glob("*"):
-        if gesture_dir.is_dir():
-            class_names.add(gesture_dir.name)  # Store class name
-            print(f"Debug: Checking validation folder: {gesture_dir}")  # Debugging folder structure
-            for session_dir in gesture_dir.glob("f*e*"):  # Navigate into the `f*s*e*` subdirectory
-                valid_sequences.extend(session_dir.glob(f"*{img_ext}"))
-
-    # Debugging information to verify counts and classes
     print(f"Debug: Found {len(valid_sequences)} images in validation set.")
-    print(f"Debug: Detected classes: {sorted(class_names)}")
 
-    # Raise an error if validation set is empty to prevent downstream issues
-    if len(valid_sequences) == 0:
-        raise ValueError("Error: No images found in the validation set. Check if the directory structure and file paths match expected patterns.")
+    return train_sequences, valid_sequences
 
-    return train_sequences, valid_sequences, sorted(class_names)
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, n_classes, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
     tfms = aug_transforms(
