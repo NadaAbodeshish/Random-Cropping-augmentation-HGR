@@ -194,10 +194,10 @@ def get_gesture_sequences(ds_directory, ds_valid="valid"):
     train_sequences = []
     valid_sequences = []
 
-    # Loop through each class folder for training
+    # Process training images
     train_path = Path(ds_directory) / 'train'
     for class_folder in train_path.iterdir():
-        if class_folder.is_dir():
+        if class_folder.is_dir():  # Only consider directories
             for fse_folder in class_folder.iterdir():
                 if fse_folder.is_dir():
                     for aug_folder in fse_folder.iterdir():
@@ -205,10 +205,10 @@ def get_gesture_sequences(ds_directory, ds_valid="valid"):
                             for image_file in aug_folder.glob("*.png"):
                                 train_sequences.append(image_file)
 
-    # Loop through each class folder for validation
+    # Process validation images
     valid_path = Path(ds_directory) / ds_valid
     for class_folder in valid_path.iterdir():
-        if class_folder.is_dir():
+        if class_folder.is_dir():  # Only consider directories
             for fse_folder in class_folder.iterdir():
                 if fse_folder.is_dir():
                     for image_file in fse_folder.glob("*.png"):
@@ -219,58 +219,44 @@ def get_gesture_sequences(ds_directory, ds_valid="valid"):
 
     return train_sequences, valid_sequences
 
+def multiOrientationDataLoader(ds_directory, bs, img_size, n_classes=None, shuffle=True, e2eTunerMode=False, preview=False):
+    train_sequences, valid_sequences = get_gesture_sequences(ds_directory)
+    
+    # Get the unique class names from the folder names in the training set
+    gesture_classes = sorted(set(path.parent.parent.name for path in train_sequences))
+    if n_classes is None:
+        n_classes = len(gesture_classes)
 
-def multiOrientationDataLoader(ds_directory, bs, img_size, n_classes, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
-    tfms = aug_transforms(
-        do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
-        max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
+    print(f"Debug: Expected classes: {n_classes}, Detected classes: {len(gesture_classes)}")
+    
+    # Check if detected classes match expected number
+    assert len(gesture_classes) == n_classes, (
+        f">> ValueError: Detected {len(gesture_classes)} classes, expected {n_classes}. "
+        "Check class handling or dataset structure."
     )
 
-    train_sequences, valid_sequences = get_gesture_sequences(ds_directory, ds_valid)
-    print(f"Debug: Found {len(train_sequences)} images in training set.")
-    print(f"Debug: Found {len(valid_sequences)} images in validation set.")
-
-    if len(valid_sequences) == 0:
-        raise ValueError("Error: No images found in the validation set.")
-
-    # DataBlock setup
+    # Define the DataBlock with the adjusted paths
     multiDHG1428 = DataBlock(
-        blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
+        blocks=(ImageTupleBlock, CategoryBlock(vocab=gesture_classes)),
         get_items=lambda p: train_sequences + valid_sequences,
+        splitter=FuncSplitter(lambda x: x in valid_sequences),
         get_x=get_orientation_images,
-        get_y=get_gesture_type,  # Ensure gesture type extraction aligns with class structure
-        splitter=IndexSplitter(list(range(len(train_sequences), len(train_sequences) + len(valid_sequences)))),
-        item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
+        get_y=lambda path: path.parent.parent.name,  # Get class name from the main class folder
+        item_tfms=Resize(img_size),
+        batch_tfms=aug_transforms(),
     )
 
-    try:
-        ds = multiDHG1428.datasets(ds_directory, verbose=False)
-        print(f"Debug: Number of items in training split: {len(ds.train)}")
-        print(f"Debug: Number of items in validation split: {len(ds.valid)}")
+    # Create datasets and dataloaders
+    ds = multiDHG1428.datasets(ds_directory)
+    print(f"Debug: Number of items in training split: {len(ds.train)}")
+    print(f"Debug: Number of items in validation split: {len(ds.valid)}")
+    
+    dls = multiDHG1428.dataloaders(ds_directory, bs=bs, shuffle=shuffle)
 
-        # Check if splits are empty
-        if len(ds.train) == 0 or len(ds.valid) == 0:
-            raise ValueError("Error: One of the dataset splits is empty. Check the directory structure and ensure images are in the correct train/valid folders.")
+    if preview:
+        dls.show_batch(max_n=4, unique=True)
 
-        if return_dls:
-            dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
-            print(f"Debug: Expected classes: {n_classes}, Detected classes: {dls.c}")
-            print(f"Debug: Detected class vocab: {dls.vocab}")
-
-            assert dls.c == n_classes, f">> ValueError: Detected {dls.c} classes, expected {n_classes}. Check class handling or dataset structure."
-
-            if preview:
-                dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
-                dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
-
-            return dls
-        else:
-            return ds
-
-    except Exception as e:
-        raise ValueError(f"Error creating datasets: {e}")
-
+    return dls
 
 
 # def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
