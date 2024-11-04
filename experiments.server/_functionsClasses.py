@@ -190,7 +190,6 @@ def get_gesture_type(p):
     else:
         return p.parent.name         # For validation, class is one level up
     
-
 def get_gesture_sequences(ds_directory, ds_valid="valid", img_ext=".png"):
     """
     Retrieves gesture sequences for both training and validation sets, handling nested 'aug_*' folders
@@ -209,12 +208,12 @@ def get_gesture_sequences(ds_directory, ds_valid="valid", img_ext=".png"):
                 train_sequences.extend(session_dir.glob(f"*{img_ext}"))
     print(f"Debug: Found {len(train_sequences)} images in training set.")
 
-    # Traverse the validation directory with wildcard pattern for `f*s*e*` and `f**s**e**`
+    # Traverse the validation directory with correct class and subdirectory handling
     for gesture_dir in valid_path.glob("*"):
         if gesture_dir.is_dir():
             print(f"Debug: Checking validation folder: {gesture_dir}")  # Debugging folder structure
-            for subfolder in gesture_dir.glob("f*e*"):  # Generalized pattern to capture both formats
-                valid_sequences.extend(subfolder.glob(f"*{img_ext}"))
+            for session_dir in gesture_dir.glob("f*e*"):  # Navigate into the `f*s*e*` subdirectory
+                valid_sequences.extend(session_dir.glob(f"*{img_ext}"))
 
     # Debugging information to verify counts
     print(f"Debug: Found {len(valid_sequences)} images in validation set.")
