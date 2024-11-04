@@ -208,13 +208,15 @@ def get_gesture_sequences(ds_directory, ds_valid="valid"):
             for session_dir in gesture_dir.glob("*/aug_*"):
                 train_sequences.extend(session_dir.glob("*.png"))
 
-    # Traverse the validation directory directly (no `aug_*` subdirectories)
     for gesture_dir in valid_path.glob("*"):
-        if gesture_dir.is_dir():
-            valid_sequences.extend(gesture_dir.glob("*.png"))
+            if gesture_dir.is_dir():
+                print(f"Debug: Checking validation folder: {gesture_dir}")  # Debugging folder structure
+                for img in gesture_dir.glob("*.png"):
+                    print(f"Debug: Adding validation file {img}")  # Debugging each validation image path
+                    valid_sequences.append(img)
+
 
     # Debugging information to verify counts
-    print(f"Debug: Found {len(train_sequences)} images in training set.")
     print(f"Debug: Found {len(valid_sequences)} images in validation set.")
 
     # Raise an error if validation set is empty to prevent downstream issues
