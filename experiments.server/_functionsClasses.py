@@ -183,45 +183,45 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     return ctxs
 
 
-def get_gesture_sequences(ds_directory, ds_valid="valid"):
-    """Retrieve all image paths from the training and validation directories."""
-    train_sequences, valid_sequences = [], []
-    
-    train_path = Path(ds_directory) / "train"
-    valid_path = Path(ds_directory) / ds_valid
-    
-    # Collect paths for training data, including images in aug_* directories
-    for gesture_dir in train_path.iterdir():
-        if gesture_dir.is_dir():
-            for seq_dir in gesture_dir.iterdir():
-                if seq_dir.is_dir():
-                    for aug_dir in seq_dir.iterdir():
-                        if aug_dir.is_dir() and aug_dir.name.startswith("aug_"):
-                            train_sequences.extend(aug_dir.glob("*.png"))
-                        elif aug_dir.is_file():
-                            train_sequences.append(aug_dir)
-
-    # Collect paths for validation data (no aug_* folders expected)
-    for gesture_dir in valid_path.iterdir():
-        if gesture_dir.is_dir():
-            valid_sequences.extend(gesture_dir.glob("*.png"))
-
-    # Debugging outputs to confirm correct counts
-    print(f"Debug: Found {len(train_sequences)} images in training set.")
-    print(f"Debug: Found {len(valid_sequences)} images in validation set.")
-
-    # Raise error if validation set is empty
-    if len(valid_sequences) == 0:
-        raise ValueError("Error: No images found in the validation set.")
-    
-    return train_sequences, valid_sequences
-
 def get_gesture_type(p):
     """Extract the gesture type (class) from the path."""
     if "train" in str(p):
         return p.parent.parent.name  # For training, class is two levels up
     else:
         return p.parent.name         # For validation, class is one level up
+    
+
+def get_gesture_sequences(ds_directory, ds_valid="valid"):
+    """
+    Retrieves gesture sequences for both training and validation sets, handling nested 'aug_*' folders
+    in the training set and direct image files in the validation set.
+    """
+    train_path = Path(ds_directory) / "train"
+    valid_path = Path(ds_directory) / ds_valid
+
+    train_sequences = []
+    valid_sequences = []
+
+    # Traverse the training directory, accounting for `aug_*` subdirectories
+    for gesture_dir in train_path.glob("*"):
+        if gesture_dir.is_dir():
+            for session_dir in gesture_dir.glob("*/aug_*"):
+                train_sequences.extend(session_dir.glob("*.png"))
+
+    # Traverse the validation directory directly (no `aug_*` subdirectories)
+    for gesture_dir in valid_path.glob("*"):
+        if gesture_dir.is_dir():
+            valid_sequences.extend(gesture_dir.glob("*.png"))
+
+    # Debugging information to verify counts
+    print(f"Debug: Found {len(train_sequences)} images in training set.")
+    print(f"Debug: Found {len(valid_sequences)} images in validation set.")
+
+    # Raise an error if validation set is empty to prevent downstream issues
+    if len(valid_sequences) == 0:
+        raise ValueError("Error: No images found in the validation set.")
+
+    return train_sequences, valid_sequences
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
     tfms = aug_transforms(
@@ -229,44 +229,31 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
 
-    # Retrieve train and valid image sequences
+    # Fetch training and validation sequences
     train_sequences, valid_sequences = get_gesture_sequences(ds_directory, ds_valid)
 
-    # Handle empty dataset case explicitly to avoid index errors
-    if not train_sequences:
-        raise ValueError("Error: No images found in the training set.")
-    if not valid_sequences:
-        raise ValueError("Error: No images found in the validation set.")
-
-    # Setup DataBlock with correct label extraction
     multiDHG1428 = DataBlock(
-        blocks=(ImageTupleBlock, CategoryBlock),
+        blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
         get_items=lambda p: train_sequences + valid_sequences,
         get_x=get_orientation_images,
-        get_y=get_gesture_type,
-        splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
+        get_y=get_gesture_type,  # Extract gesture type correctly
+        splitter=IndexSplitter(list(range(len(train_sequences), len(train_sequences) + len(valid_sequences)))),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
     )
 
-    try:
-        # Attempt to create datasets and verify the split counts
-        ds = multiDHG1428.datasets(ds_directory, verbose=False)
-        print(f"Debug: Number of items in training split: {len(ds.train)}")
-        print(f"Debug: Number of items in validation split: {len(ds.valid)}")
+    # Generate datasets and validate splits
+    ds = multiDHG1428.datasets(ds_directory, verbose=False)
+    print(f"Debug: Number of items in training split: {len(ds.train)}")
+    print(f"Debug: Number of items in validation split: {len(ds.valid)}")
 
-        if len(ds.train) == 0 or len(ds.valid) == 0:
-            raise ValueError("Error: One of the dataset splits is empty.")
-    except IndexError as e:
-        raise IndexError("Error: Dataset split indexing issue - check if both training and validation sets contain data.") from e
-    except Exception as e:
-        raise ValueError(f"Error creating datasets: {e}")
+    # Raise error if any split is empty
+    if len(ds.train) == 0 or len(ds.valid) == 0:
+        raise ValueError("Error: One of the dataset splits is empty. Check the directory structure and ensure images are in the correct train/valid folders.")
 
-    # Load data loaders if requested
     if return_dls:
         dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
-
-        # Debugging output for classes and vocabulary
+        
         print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {dls.c}")
         print(f"Debug: Detected class vocab: {dls.vocab}")
 
@@ -286,7 +273,6 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
             clear_output(wait=False)
 
         return dls
-
     else:
         return ds
 
