@@ -208,8 +208,22 @@ def get_gesture_sequences(path, orientations, is_train=True):
     return L(dict.fromkeys([f.parent for f in files]))
 
 def get_orientation_images(o):
-    # Construct paths only for the orientations specified in args.mv_orientations
-    return [o / f"{orientation}.png" for orientation in args.mv_orientations]
+    """
+    Return paths for each orientation, including `_aug*` variations if available.
+    """
+    orientation_images = []
+    for orientation in args.mv_orientations:
+        # Search for files with and without `_aug*` suffix for each orientation
+        possible_aug_files = sorted(o.glob(f"{orientation}_aug*.png"))
+        
+        # Use the augmented file if it exists, otherwise use the default
+        if possible_aug_files:
+            orientation_images.append(possible_aug_files[0])  # Choose the first match if multiple
+        else:
+            # Fallback to non-augmented image if no augmented files are found
+            orientation_images.append(o / f"{orientation}.png")
+    
+    return orientation_images
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, e2eTunerMode=False, preview=False):
     ds_directory = Path(ds_directory)  # Convert ds_directory to a Path object if not already
