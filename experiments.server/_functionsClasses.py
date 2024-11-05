@@ -224,51 +224,57 @@ def get_orientation_images(o):
     # Construct paths only for the orientations specified in args.mv_orientations
     return [o / f"{orientation}.png" for orientation in args.mv_orientations]
 
-def multiOrientationDataLoader(ds_directory, bs, img_size, e2eTunerMode=False, preview=False):
-    # Define transformations
-    tfms = aug_transforms(
-        do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5,
-        max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
-    )
+def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, e2eTunerMode=False, preview=False):
+    orientations = args.mv_orientations  # Use orientations from args
+    n_classes = args.n_classes  # Use number of classes from args
 
-    # Get training and validation sequences
-    train_sequences, valid_sequences = get_gesture_sequences(ds_directory, "valid")
-    
-    # Debug: Show sequence counts
+    # Debug: Print dataset directory and orientations
+    print(f"Debug: Dataset directory is {ds_directory}")
+    print(f"Debug: Using orientations: {orientations}")
+
+    # Load sequences for train and validation
+    train_sequences = get_gesture_sequences(ds_directory / "train", orientations, is_train=True)
+    valid_sequences = get_gesture_sequences(ds_directory / "valid", orientations, is_train=False)
+
+    # Check and log the number of sequences found
     print(f"Debug: Found {len(train_sequences)} images in training set.")
     print(f"Debug: Found {len(valid_sequences)} images in validation set.")
 
-    # Define the DataBlock
+    if len(train_sequences) == 0 or len(valid_sequences) == 0:
+        raise ValueError("Error: No images found in one of the dataset splits. Check dataset structure.")
+
+    # DataBlock definition
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=get_gesture_sequences,
-        get_x=lambda o: get_orientation_images(o),  # Call without passing orientations directly
+        get_items=lambda p: train_sequences + valid_sequences,
+        get_x=get_orientation_images,
         get_y=parent_label,
         splitter=GrandparentSplitter(train_name="train", valid_name="valid"),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
+        batch_tfms=[*aug_transforms(), Normalize.from_stats(*imagenet_stats)],
     )
 
-    # Create the datasets and DataLoader
-    try:
-        ds = multiDHG1428.datasets(ds_directory, verbose=False)
-        print(f"Debug: Number of items in training split: {len(ds.train)}")
-        print(f"Debug: Number of items in validation split: {len(ds.valid)}")
-        
-        # Check that the number of classes matches args.n_classes
-        assert len(ds.vocab) == args.n_classes, f">> ValueError: Detected {len(ds.vocab)} classes, expected {args.n_classes}."
+    # Create dataset
+    ds = multiDHG1428.datasets(ds_directory)
+    print(f"Debug: Number of items in training split: {len(ds.train)}")
+    print(f"Debug: Number of items in validation split: {len(ds.valid)}")
 
-        # Initialize DataLoaders
-        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, shuffle=True)
+    if len(ds.train) == 0 or len(ds.valid) == 0:
+        raise ValueError("Error: One of the dataset splits is empty. Check directory structure.")
+
+    if return_dls:
+        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, shuffle=shuffle, num_workers=0)
+        print(f"Debug: Expected classes: {n_classes}, Detected classes: {dls.c}")
+        print(f"Debug: Detected class vocab: {dls.vocab}")
+        assert dls.c == n_classes, f">> ValueError: Detected {dls.c} classes, expected {n_classes}. Check class handling or dataset structure."
         
         if preview:
-            print("Debug: Showing a sample batch from training set")
             dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
         
         return dls
+    else:
+        return ds
 
-    except Exception as e:
-        raise ValueError(f"Error creating datasets: {e}")
 
 # def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
 #     tfms = aug_transforms(
