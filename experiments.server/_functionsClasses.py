@@ -201,108 +201,68 @@ def is_augmented_image(file_name):
             return True
     return False
 
-def get_gesture_sequences(path):
+from fastcore.foundation import L
+
+def get_gesture_sequences(path, orientations, is_train=True):
     """
-    Retrieve gesture sequences from the specified path, including only images
-    with names matching the required orientations defined in args.mv_orientations.
-    Ignores augmentation suffixes.
+    Gather gesture sequences from the dataset directory.
+    If is_train is True, includes files with `_aug` suffixes; otherwise, filters them out.
     """
-    # Convert orientations in args.mv_orientations to expected filenames
-    required_orientations = [f"{orientation}.png" for orientation in args.mv_orientations]
-    
-    # Get all image files
     files = get_image_files(path)
     
-    # Filter to include only those files that exactly match one of the required orientations
-    filtered_files = [
-        f for f in files if any(f.name == orientation for orientation in required_orientations)
-    ]
+    if is_train:
+        # For training: include all files with orientations and `_aug` suffix
+        files = [f for f in files if any(orientation in f.name for orientation in orientations)]
+    else:
+        # For validation: exclude files with `_aug` suffix
+        files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" not in f.name]
     
-    # Return a list of unique parent folders for the filtered files
-    return L(dict.fromkeys([f.parent for f in filtered_files]))
+    # Return unique parent directories for gestures
+    return L(dict.fromkeys([f.parent for f in files]))
 
-def parent_label(file_path):
-    """Extract the gesture label from the parent directory."""
-    return file_path.parent.parent.name  # Gesture folder as label
+
 
 def get_orientation_images(o):
     """Return paths for each required orientation image in the order of args.mv_orientations."""
     return [o.parent / f"{orientation}.png" for orientation in args.mv_orientations if (o.parent / f"{orientation}.png").exists()]
 
-def multiOrientationDataLoader(ds_directory, bs, img_size, n_classes, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
-    # Define augmentations
+def multiOrientationDataLoader(ds_directory, bs, img_size, n_classes, orientations, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
 
-    # Get train and validation sequences using the updated structure
-    train_sequences, valid_sequences = get_gesture_sequences(ds_directory, ds_valid)
+    # Gather sequences for train and validation
+    train_sequences = get_gesture_sequences(ds_directory / "train", orientations, is_train=True)
+    valid_sequences = get_gesture_sequences(ds_directory / ds_valid, orientations, is_train=False)
     
-    print(f"Debug: Total training items found: {len(train_sequences)}")
-    print(f"Debug: Total validation items found: {len(valid_sequences)}")
+    # Extract gesture class names from training sequences
+    gesture_classes = sorted(set(seq.parent.name for seq in train_sequences))
+    assert len(gesture_classes) == n_classes, f">> ValueError: Detected {len(gesture_classes)} classes, expected {n_classes}. Check class handling or dataset structure."
 
-    # Extract unique gesture classes based on folder structure
-    gesture_classes = sorted({f.parent.parent.name for f in train_sequences})
-    print(f"Debug: Detected classes: {gesture_classes}")
-    
-    # Verify if detected classes match expected count
-    assert len(gesture_classes) == n_classes, (
-        f">> ValueError: Detected {len(gesture_classes)} classes, expected {n_classes}. "
-        "Check class handling or dataset structure."
-    )
-
-    # Configure the DataBlock with the correct blocks and labeling
     multiDHG1428 = DataBlock(
-        blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=get_gesture_sequences,
+        blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock(vocab=gesture_classes)),
+        get_items=get_gesture_sequences,  # Use get_gesture_sequences directly
         get_x=get_orientation_images,
         get_y=parent_label,
-        splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
+        splitter=FuncSplitter(lambda x: x in valid_sequences),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
     )
 
-    # Create datasets and validate splits
     ds = multiDHG1428.datasets(ds_directory, verbose=False)
-    print(f"Debug: Number of items in training split: {len(ds.train)}")
-    print(f"Debug: Number of items in validation split: {len(ds.valid)}")
-
-    # Ensure splits are populated
-    if len(ds.train) == 0 or len(ds.valid) == 0:
-        raise ValueError("Error: One of the dataset splits is empty. Check if images are missing or misclassified.")
     
     if return_dls:
-        dls = multiDHG1428.dataloaders(
-            ds_directory, bs=bs, worker_init_fn=_e_seed_worker, 
-            generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0
-        )
-
-        print(f"Debug: Expected classes: {n_classes}, Detected classes: {dls.c}")
-        print(f"Debug: Detected class vocab: {dls.vocab}")
-
-        # Verify if the DataLoader matches expected class count
-        assert dls.c == n_classes, (
-            f">> ValueError: Detected {dls.c} classes, expected {n_classes}. "
-            "Check class handling or dataset structure."
-        )
-
+        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
+        assert dls.c == n_classes, f">> ValueError: Detected {dls.c} classes, expected {n_classes}. Check class handling or dataset structure."
+        
         if preview:
-            print(dedent(f"""
-            Dataloader has been created successfully...
-            The dataloader has {len(dls.vocab)} ({dls.c}) classes: {dls.vocab}
-            Training set [len={len(dls.train.items)}, img_sz={get_mVOs_img_size(dls.train)}] loaded on device: {dls.train.device}
-            Validation set [len={len(dls.valid.items)}, img_sz={get_mVOs_img_size(dls.valid)}] loaded on device: {dls.valid.device}
-            Previewing loaded data [1] and applied transforms [2]...
-            """))
-            dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
+            print(f"Dataloader created with {dls.c} classes: {gesture_classes}")
             dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
-        else:
-            clear_output(wait=False)
-
         return dls
-    else:
-        return ds
+
+    return ds
+
 
 # def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
 #     tfms = aug_transforms(
