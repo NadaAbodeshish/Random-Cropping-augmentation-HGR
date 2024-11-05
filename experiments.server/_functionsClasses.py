@@ -192,17 +192,17 @@ def is_augmented_image(file_name):
 def get_gesture_sequences(path, orientations, is_train=True):
     """
     Gather gesture sequences from the dataset directory.
-    If is_train is True, includes files with `_aug` suffixes; otherwise, filters them out.
+    - For training (`is_train=True`): includes all files with `_aug` suffix.
+    - For validation (`is_train=False`): excludes `_aug` files.
     """
-    path = Path(path)  # Ensure path is a Path object
     files = get_image_files(path)
     
     if is_train:
         # For training: include all files with orientations and `_aug` suffix
-        files = [f for f in files if any(orientation in f.name for orientation in orientations)]
+        files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" in f.stem]
     else:
         # For validation: exclude files with `_aug` suffix
-        files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" not in f.name]
+        files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" not in f.stem]
     
     # Return unique parent directories for gestures
     return L(dict.fromkeys([f.parent for f in files]))
@@ -226,11 +226,9 @@ def get_orientation_images(o):
     return orientation_images
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, e2eTunerMode=False, preview=False):
-    ds_directory = Path(ds_directory)  # Convert ds_directory to a Path object if not already
     orientations = args.mv_orientations  # Use orientations from args
     n_classes = args.n_classes  # Use number of classes from args
 
-    # Debug: Print dataset directory and orientations
     print(f"Debug: Dataset directory is {ds_directory}")
     print(f"Debug: Using orientations: {orientations}")
 
@@ -238,14 +236,13 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
     train_sequences = get_gesture_sequences(ds_directory / "train", orientations, is_train=True)
     valid_sequences = get_gesture_sequences(ds_directory / "valid", orientations, is_train=False)
 
-    # Check and log the number of sequences found
-    print(f"Debug: Found {len(train_sequences)} images in training set.")
-    print(f"Debug: Found {len(valid_sequences)} images in validation set.")
+    print(f"Debug: Found {len(train_sequences)} items in training set.")
+    print(f"Debug: Found {len(valid_sequences)} items in validation set.")
 
     if len(train_sequences) == 0 or len(valid_sequences) == 0:
         raise ValueError("Error: No images found in one of the dataset splits. Check dataset structure.")
 
-    # DataBlock definition
+    # DataBlock definition with get_items properly set
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
         get_items=lambda p: train_sequences + valid_sequences,
@@ -256,7 +253,6 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         batch_tfms=[*aug_transforms(), Normalize.from_stats(*imagenet_stats)],
     )
 
-    # Create dataset
     ds = multiDHG1428.datasets(ds_directory)
     print(f"Debug: Number of items in training split: {len(ds.train)}")
     print(f"Debug: Number of items in validation split: {len(ds.valid)}")
