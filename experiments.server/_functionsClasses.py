@@ -231,6 +231,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, n_classes, orientatio
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
+    print(f"Debug: Orientations received: {orientations}")
 
     # Gather sequences for train and validation
     train_sequences = get_gesture_sequences(ds_directory / "train", orientations, is_train=True)
