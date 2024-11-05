@@ -225,9 +225,13 @@ def get_orientation_images(o):
     
     return orientation_images
 
+
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, e2eTunerMode=False, preview=False):
     orientations = args.mv_orientations  # Use orientations from args
     n_classes = args.n_classes  # Use number of classes from args
+
+    # Convert ds_directory to Path if it's not already
+    ds_directory = Path(ds_directory)
 
     print(f"Debug: Dataset directory is {ds_directory}")
     print(f"Debug: Using orientations: {orientations}")
