@@ -201,25 +201,25 @@ def is_augmented_image(file_name):
             return True
     return False
 
-def get_gesture_sequences(ds_directory, ds_valid):
+def get_gesture_sequences(path):
     """
-    Retrieve train and validation sequences with the new structure.
-    ds_directory: Path to training dataset directory
-    ds_valid: Path to validation dataset directory
+    Retrieve gesture sequences from the specified path, including only images
+    with names matching the required orientations defined in args.mv_orientations.
+    Ignores augmentation suffixes.
     """
-    # Collect augmented images for training
-    train_files = [f for f in get_image_files(ds_directory) if is_augmented_image(f.name)]
+    # Convert orientations in args.mv_orientations to expected filenames
+    required_orientations = [f"{orientation}.png" for orientation in args.mv_orientations]
     
-    # Collect only specific validation images without augmentation
-    valid_files = [f for f in get_image_files(ds_valid) if f.name in [f"{orientation}.png" for orientation in args.mv_orientations]]
+    # Get all image files
+    files = get_image_files(path)
     
-    print(f"Debug: Found {len(train_files)} images in training set.")
-    print(f"Debug: Found {len(valid_files)} images in validation set.")
+    # Filter to include only those files that exactly match one of the required orientations
+    filtered_files = [
+        f for f in files if any(f.name == orientation for orientation in required_orientations)
+    ]
     
-    if len(valid_files) == 0:
-        raise ValueError("Error: No images found in the validation set.")
-        
-    return train_files, valid_files
+    # Return a list of unique parent folders for the filtered files
+    return L(dict.fromkeys([f.parent for f in filtered_files]))
 
 def parent_label(file_path):
     """Extract the gesture label from the parent directory."""
