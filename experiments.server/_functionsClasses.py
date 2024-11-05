@@ -182,18 +182,6 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
 
-
-def get_gesture_type(p):
-    """Extract the gesture type (class) from the path."""
-    if "train" in str(p):
-        return p.parent.parent.name  # For training, class is two levels up
-    else:
-        return p.parent.name         # For validation, class is one level up
-
-import re
-from fastai.vision.all import *
-from pathlib import Path
-
 def is_augmented_image(file_name):
     """Check if the file matches one of the required orientation patterns with augmentation."""
     for orientation in args.mv_orientations:  # Using args.mv_orientations for orientation names
@@ -201,13 +189,12 @@ def is_augmented_image(file_name):
             return True
     return False
 
-from fastcore.foundation import L
-
 def get_gesture_sequences(path, orientations, is_train=True):
     """
     Gather gesture sequences from the dataset directory.
     If is_train is True, includes files with `_aug` suffixes; otherwise, filters them out.
     """
+    path = Path(path)  # Ensure path is a Path object
     files = get_image_files(path)
     
     if is_train:
@@ -225,6 +212,7 @@ def get_orientation_images(o):
     return [o / f"{orientation}.png" for orientation in args.mv_orientations]
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, e2eTunerMode=False, preview=False):
+    ds_directory = Path(ds_directory)  # Convert ds_directory to a Path object if not already
     orientations = args.mv_orientations  # Use orientations from args
     n_classes = args.n_classes  # Use number of classes from args
 
