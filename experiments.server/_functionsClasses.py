@@ -255,7 +255,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, n_classes, shuffle=Tr
     # Configure the DataBlock with the correct blocks and labeling
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=lambda p: train_sequences + valid_sequences,
+        get_items=get_gesture_sequences,
         get_x=get_orientation_images,
         get_y=parent_label,
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
