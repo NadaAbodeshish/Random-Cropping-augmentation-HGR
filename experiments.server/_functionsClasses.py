@@ -18,14 +18,13 @@ import torch
 import torch.nn as NN
 import numpy as np
 from fastai.vision.all import *
-from fastai.vision.all import aug_transforms, Resize, Normalize, imagenet_stats, GrandparentSplitter
 from fastai.torch_core import defaults
 from torch.utils.tensorboard.writer import SummaryWriter
 from IPython.display import clear_output
 # ---
 from __main__ import args, deets
 from _helperFunctions import *
-from pathlib import Path
+
 
 __all__ = [
     "multiOrientationDataLoader",
@@ -158,9 +157,12 @@ class e2eTunerImageTuples(fastuple):
 def e2eTunerImageTupleBlock():
     return TransformBlock(type_tfms=e2eTunerImageTuples.create, batch_tfms=IntToFloatTensor)
 
-# def get_orientation_images(o):
-#     # Ensure paths are constructed only once for each orientation without extra path nesting
-#     return [o.parent / f"{orientation}.png" for orientation in args.mv_orientations]
+def get_gesture_sequences(path):
+    files = get_image_files(path)
+    return L(dict.fromkeys([f.parent for f in files]))
+
+def get_orientation_images(o):
+    return [(o / f"{_vo}.png") for _vo in args.mv_orientations]
 
 def get_mVOs_img_size(subset):
     assert "fastai.data.core.TfmdDL" in str(type(subset)), "train/valid dls subset should be provided!"
@@ -181,166 +183,57 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     # ---
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
-
-def is_augmented_image(file_name):
-    """Check if the file matches one of the required orientation patterns with augmentation."""
-    for orientation in args.mv_orientations:  # Using args.mv_orientations for orientation names
-        if re.match(fr"{orientation}_aug_\d+\.png$", file_name):
-            return True
-    return False
-
-def get_gesture_sequences(path, orientations, is_train=True):
-    """
-    Gather gesture sequences from the dataset directory.
-    - For training (`is_train=True`): includes all files with `_aug` suffix.
-    - For validation (`is_train=False`): excludes `_aug` files.
-    """
-    files = get_image_files(path)
-    
-    if is_train:
-        # For training: include all files with orientations and `_aug` suffix
-        files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" in f.stem]
+def apply_mixup_or_cutmix(batch, mixup_prob=0.5):
+    """Apply either MixUp or CutMix with a given probability to the batch."""
+    if random.random() < mixup_prob:
+        mixup = MixUp()
+        return mixup(batch)
     else:
-        # For validation: exclude files with `_aug` suffix
-        files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" not in f.stem]
-    
-    # Return unique parent directories for gestures
-    return L(dict.fromkeys([f.parent for f in files]))
+        cutmix = CutMix()
+        return cutmix(batch)
 
-def get_orientation_images(o):
-    """
-    Return paths for each orientation, including `_aug*` variations if available.
-    """
-    orientation_images = []
-    for orientation in args.mv_orientations:
-        # Search for files with and without `_aug*` suffix for each orientation
-        possible_aug_files = sorted(o.glob(f"{orientation}_aug*.png"))
-        
-        # Use the augmented file if it exists, otherwise use the default
-        if possible_aug_files:
-            orientation_images.append(possible_aug_files[0])  # Choose the first match if multiple
-        else:
-            # Fallback to non-augmented image if no augmented files are found
-            orientation_images.append(o / f"{orientation}.png")
-    
-    return orientation_images
+def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
+    tfms = aug_transforms(
+        do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
+        max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
+    )
+    batch_tfms = [
+        *tfms, 
+        Normalize.from_stats(*imagenet_stats),
+        apply_mixup_or_cutmix  # Apply either MixUp or CutMix to each batch
+    ]
 
-
-def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, e2eTunerMode=False, preview=False):
-    orientations = args.mv_orientations  # Use orientations from args
-    n_classes = args.n_classes  # Use number of classes from args
-
-    # Convert ds_directory to Path if it's not already
-    ds_directory = Path(ds_directory)
-
-    print(f"Debug: Dataset directory is {ds_directory}")
-    print(f"Debug: Using orientations: {orientations}")
-
-    # Load sequences for train and validation
-    train_sequences = get_gesture_sequences(ds_directory / "train", orientations, is_train=True)
-    valid_sequences = get_gesture_sequences(ds_directory / "valid", orientations, is_train=False)
-
-    print(f"Debug: Found {len(train_sequences)} items in training set.")
-    print(f"Debug: Found {len(valid_sequences)} items in validation set.")
-
-    if len(train_sequences) == 0 or len(valid_sequences) == 0:
-        raise ValueError("Error: No images found in one of the dataset splits. Check dataset structure.")
-
-    # DataBlock definition with get_items properly set
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=lambda p: train_sequences + valid_sequences,
+        get_items=get_gesture_sequences,
         get_x=get_orientation_images,
         get_y=parent_label,
-        splitter=GrandparentSplitter(train_name="train", valid_name="valid"),
+        splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-        batch_tfms=[*aug_transforms(), Normalize.from_stats(*imagenet_stats)],
+        batch_tfms=batch_tfms,
     )
 
-    ds = multiDHG1428.datasets(ds_directory)
-    print(f"Debug: Number of items in training split: {len(ds.train)}")
-    print(f"Debug: Number of items in validation split: {len(ds.valid)}")
-
-    if len(ds.train) == 0 or len(ds.valid) == 0:
-        raise ValueError("Error: One of the dataset splits is empty. Check directory structure.")
-
+    ds = multiDHG1428.datasets(ds_directory, verbose=False)
     if return_dls:
-        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, shuffle=shuffle, num_workers=0)
-        print(f"Debug: Expected classes: {n_classes}, Detected classes: {dls.c}")
-        print(f"Debug: Detected class vocab: {dls.vocab}")
-        assert dls.c == n_classes, f">> ValueError: Detected {dls.c} classes, expected {n_classes}. Check class handling or dataset structure."
-        
+        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=e_seed_worker, generator=e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
+        # clear_output(wait=False)
+        assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
+
         if preview:
+            print(dedent(f"""
+            Dataloader has been created successfully...
+            The dataloader has {len(dls.vocab)} ({dls.c}) classes: {dls.vocab}
+            Training set [len={len(dls.train.items)}, img_sz={get_mVOs_img_size(dls.train)}] loaded on device: {dls.train.device}
+            Validation set [len={len(dls.valid.items)}, img_sz={get_mVOs_img_size(dls.valid)}] loaded on device: {dls.valid.device}
+            Previewing loaded data [1] and applied transforms [2]...
+            """))
+            dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
             dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
-        
+        else: clear_output(wait=False)
+
         return dls
-    else:
-        return ds
 
-
-# def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
-#     tfms = aug_transforms(
-#         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
-#         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
-#     )
-
-#     gesture_sequences = get_gesture_sequences(ds_directory)
-#     gesture_sequences = [str(p) if isinstance(p, Path) else p for p in gesture_sequences if isinstance(p, (str, Path)) and p.exists()]
-    
-#     paths = [Path(p) for p in gesture_sequences]
-#     print(f"Debug: Total items found: {len(paths)}")
-
-#     if not paths:
-#         raise ValueError("No valid paths found. Check that `ds_directory` contains valid images structured for training and validation.")
-
-#     multiDHG1428 = DataBlock(
-#         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-#         get_items=lambda p: paths,
-#         get_x=get_orientation_images,
-#         get_y=get_gesture_type,
-#         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
-#         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-#         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
-#     )
-
-#     try:
-#         ds = multiDHG1428.datasets(ds_directory, verbose=False)
-#     except Exception as e:
-#         print(f"Debug: Dataset creation failed with paths: {paths[:5]}...")
-#         raise ValueError(f"Error creating datasets: {e}")
-
-#     if len(ds.train) == 0 or len(ds.valid) == 0:
-#         print(f"Debug: Training split size: {len(ds.train)}, Validation split size: {len(ds.valid)}")
-#         raise ValueError("One of the dataset splits is empty. Ensure images are correctly placed in 'train' and 'valid' folders.")
-
-#     print(f"Debug: Number of items in training split: {len(ds.train)}")
-#     print(f"Debug: Number of items in validation split: {len(ds.valid)}")
-
-#     if return_dls:
-#         try:
-#             dls = multiDHG1428.dataloaders(
-#                 ds_directory, bs=bs, worker_init_fn=_e_seed_worker,
-#                 generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0
-#             )
-#         except Exception as e:
-#             print(f"Debug: Failed to create DataLoaders with paths: {paths[:5]}...")
-#             raise ValueError(f"Error creating DataLoaders: {e}")
-        
-#         print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {dls.c}")
-#         print(f"Debug: Detected class vocab: {dls.vocab}")
-
-#         assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
-
-#         if preview:
-#             dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
-#             dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
-#         else:
-#             clear_output(wait=False)
-
-#         return dls
-
-#     return ds
-
+    else: return ds
 # -----------------------------------------------
 
 
@@ -435,27 +328,18 @@ class outsidersCustomCallback(TrackerCallback):
 # -----------------------------------------------
 
 
-import traceback
-
 def i_LRFinder(learn, show_plot=False, n_attempts=0):
-    try:
-        result = learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
-        return result
+    try: return learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
+
     except Exception as e:
         n_attempts += 1
         print(f"@{n_attempts=}: i_LRFinder Exception:: {e}!")
-        
-        # Handle CUDA or file errors
-        if "CUDA" in str(e) or "FileNotFoundError" in str(e):
-            print(f"Critical error encountered. Exiting: {e}")
-            os._exit(os.EX_OK)
-        elif "too many values to unpack" in str(e):
-            print("Error unpacking values from lr_find result.")
-            return None  # Explicitly return None for getLR to handle
-        else:
-            if n_attempts >= 69:
-                print("Max attempts reached:", traceback.format_exc())
-                os._exit(os.EX_OK)
+        if "CUDA" in str(e):
+            Logger(f"CUDA RuntimeError - {e}!") ; os._exit(os.EX_OK)
+        else:  # "no elements" in str(e) or "out of bounds" in str(e)  or "numerical gradient" in str(e)
+            if n_attempts == 69:
+                print(f"i_LRFinder Exception::", traceback.format_exc())
+                Logger(f"i_LRFinder Exception:: {e}!") ; os._exit(os.EX_OK)
             return i_LRFinder(learn, show_plot, n_attempts)
 
 def i_LRHistorical(n_classes, i_tag):
@@ -478,18 +362,9 @@ def i_LRHistorical(n_classes, i_tag):
     return maxLearningRates[n_classes][i_tag]
 
 def getLR(learn, i_tag, show_plot=False):
-    if args.lrs_type == "lrHistorical":
-        return i_LRHistorical(args.n_classes, i_tag)
-    elif args.lrs_type == "lrFinder":
-        # Attempt to get the learning rate using i_LRFinder
-        lr_finder_result = i_LRFinder(learn, show_plot=show_plot)
-        if lr_finder_result is None:
-            print("Warning: LR Finder failed. Using default learning rate.")
-            return defaults.lr  # Fallback to a default learning rate
-        return lr_finder_result.valley
-    else:
-        return defaults.lr  # Default learning rate if no method is specified
-
+    if args.lrs_type == "lrHistorical": return i_LRHistorical(args.n_classes, i_tag)
+    elif args.lrs_type == "lrFinder":   return i_LRFinder(learn, show_plot=show_plot).valley
+    else:                               return defaults.lr
 
 def isFrozen(learn):
     for child in learn.model.children():
@@ -685,9 +560,9 @@ class end2endTunerModel(Module):
         self.tuner_img_sz = tuner_img_sz
         self.debug = debug
 
-        self.multiVOsBody = create_body(models.resnet34(pretrained=True), cut=None)
+        self.multiVOsBody = create_body(arch=archMultiVOs, cut=None)
         self.multiVOsHead = create_head(nf=num_features_model(self.multiVOsBody), n_out=len(dls_vocab))
-        self.tunerBody = create_body(models.resnet34(pretrained=True), cut=None)
+        self.tunerBody = create_body(arch=archTuner, cut=None)
         self.tunerHead = create_head(nf=num_features_model(self.tunerBody), n_out=len(dls_vocab))
 
         self.item_tfms = [Resize(size=tuner_img_sz, method=ResizeMethod.Squish), ToTensor()]
@@ -697,50 +572,32 @@ class end2endTunerModel(Module):
         if self.debug: print(f"{self= }", end=f"\n{'-'*50}\n\n")
 
     def forward(self, Xy, y=None):
-        # Verify Xy contains exactly two elements
-        if not isinstance(Xy, (list, tuple)) or len(Xy) != 2:
-            raise ValueError(f"Expected Xy to contain exactly two elements, but got {type(Xy)} with length {len(Xy)}")
-        
-        # Unpack X and y as expected
-        if y is not None:
-            X, y = Xy, y
-        else:
-            X, y = Xy
+        if y is not None: X, y = Xy, y  # [NOTE] modified for tensorboard SummaryWriter
+        else:             X, y = Xy     # [NOTE] modified for tensorboard SummaryWriter
 
-        # Debugging information to inspect X and y
         if self.debug:
             print(f"\n{type(X)= } | {len(X)= } | {explode_types(X)= }")
-            for xi in X:
-                print(f"{explode_types(xi)= } | {xi.shape= }")
+            for xi in X: print(f"{explode_types(xi)= } | {xi.shape= }")
 
-        # Multi-view features extraction
         mvo_ftrs = [self.multiVOsBody(xi) for xi in X]
         mvo_ftrs = [self.multiVOsHead(xi) for xi in mvo_ftrs]
 
-        # Debugging: Check shapes after feature extraction
         if self.debug:
-            for idx in range(len(X)):
-                print(f">> {X[idx].shape= } ~~ {mvo_ftrs[idx].shape= }")
+            for idx in range(len(X)): print(f">> {X[idx].shape= } ~~ {mvo_ftrs[idx].shape= }")
 
-        # Concatenate multi-view predictions
         mvo_preds = torch.cat([torch.unsqueeze(xi.detach(), dim=1) for xi in mvo_ftrs], dim=1)
-        
-        # Decode targets and tune images for the next layer
         tnr_y = self.decode_batch_targs(y)
         tnr_X = self.batch_tuner_images(mvo_preds, tnr_y)
-
-        # Further processing with tuner layers
+        
         tnr_ftrs = self.tunerBody(tnr_X)
         tnr_ftrs = self.tunerHead(tnr_ftrs)
 
-        # Final debugging output
         if self.debug:
             print(f">> {tnr_X.shape= } | {tnr_y.shape= }")
             print(f">> {mvo_preds.shape= } | {tnr_ftrs.shape= }")
-            self.debug = False  # Disable debug mode after the first forward pass
+            self.debug = False #; os._exit(os.EX_OK)
 
         return [*mvo_ftrs, tnr_ftrs]
-
 
     def decode_batch_targs(self, yb):
         yb = torch.vstack(yb).moveaxis(0, -1).detach().cpu()
