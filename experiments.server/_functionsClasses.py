@@ -183,25 +183,12 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     # ---
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
-def apply_mixup_or_cutmix(batch, mixup_prob=0.5):
-    """Apply either MixUp or CutMix with a given probability to the batch."""
-    if random.random() < mixup_prob:
-        mixup = MixUp()
-        return mixup(batch)
-    else:
-        cutmix = CutMix()
-        return cutmix(batch)
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
-    batch_tfms = [
-        *tfms, 
-        Normalize.from_stats(*imagenet_stats),
-        apply_mixup_or_cutmix  # Apply either MixUp or CutMix to each batch
-    ]
 
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
@@ -210,7 +197,7 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
         get_y=parent_label,
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-        batch_tfms=batch_tfms,
+        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
     )
 
     ds = multiDHG1428.datasets(ds_directory, verbose=False)
@@ -751,4 +738,48 @@ def generateModelGraph(model, dls, tag="e2eEnsembleTuner"):
     writer.close()
     print(f">> Model graph generated successfully @{m_tag= }")
     os._exit(os.EX_OK)
+# -----------------------------------------------
+import torch
+import random
+
+class CutMix(Callback):
+    """Applies the CutMix augmentation during training."""
+    def __init__(self, alpha=1.0):
+        self.alpha = alpha
+
+    def before_batch(self):
+        if not self.training: 
+            return  # Only apply during training
+
+        # Get the current batch images and labels
+        x, y = self.x, self.y
+
+        # Generate lambda from the beta distribution and define bounding box
+        lam = torch.distributions.Beta(self.alpha, self.alpha).sample().item()
+        batch_size, _, h, w = x.size()
+        
+        # Randomly select a second set of images and labels
+        perm = torch.randperm(batch_size)
+        x_perm, y_perm = x[perm], y[perm]
+        
+        # Define the CutMix bounding box
+        cut_rat = torch.sqrt(1.0 - lam)
+        cut_w = (w * cut_rat).int()
+        cut_h = (h * cut_rat).int()
+
+        # Ensure that bounding box is within the image dimensions
+        cx = torch.randint(w, (1,)).item()
+        cy = torch.randint(h, (1,)).item()
+
+        x1 = torch.clamp(cx - cut_w // 2, 0, w)
+        x2 = torch.clamp(cx + cut_w // 2, 0, w)
+        y1 = torch.clamp(cy - cut_h // 2, 0, h)
+        y2 = torch.clamp(cy + cut_h // 2, 0, h)
+
+        # Apply CutMix by combining two images
+        x[:, :, y1:y2, x1:x2] = x_perm[:, :, y1:y2, x1:x2]
+        
+        # Adjust labels with lam to account for mixed regions
+        lam = 1 - ((x2 - x1) * (y2 - y1) / (h * w))
+        self.learn.yb = ((y, y_perm, lam),)
 # -----------------------------------------------
