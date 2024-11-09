@@ -93,9 +93,15 @@ learn = Learner(
     dls, model,
     metrics=metrics, loss_func=loss_func,
     opt_func=Adam, splitter=model.splitter,
-    cbs=[CutMix(alpha=1.0)],       # Add CutMix here as a callback
     path=deets.learn_directory, model_dir="."
 )
+# learn = Learner(
+#     dls, model,
+#     metrics=metrics, loss_func=loss_func,
+#     opt_func=Adam, splitter=model.splitter,
+#     # cbs=[CutMix(alpha=1.0)],       # Add CutMix here as a callback
+#     path=deets.learn_directory, model_dir="."
+# )
 # generateModelGraph(model, dls, tag=f"e2eT-{ds_name}")
 
 # [initTraining]
