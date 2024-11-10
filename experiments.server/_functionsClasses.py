@@ -185,58 +185,41 @@ def is_augmented_image(file_name):
             return True
     return False
 
-# def get_gesture_sequences(path, orientations, is_train=True):
-#     """
-#     Gather gesture sequences from the dataset directory.
-#     - For training (`is_train=True`): includes all files with `_aug` suffix.
-#     - For validation (`is_train=False`): excludes `_aug` files.
-#     """
-#     files = get_image_files(path)
-    
-#     if is_train:
-#         # For training: include all files with orientations and `_aug` suffix
-#         files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" in f.stem]
-#     else:
-#         # For validation: exclude files with `_aug` suffix
-#         files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" not in f.stem]
-    
-#     # Return unique parent directories for gestures
-#     return L(dict.fromkeys([f.parent for f in files]))
 def get_gesture_sequences(path, orientations, is_train=True):
     """
     Gather gesture sequences from the dataset directory.
-    - For training (`is_train=True`): includes files with and without `_aug` suffix.
+    - For training (`is_train=True`): includes all files with `_aug` suffix.
     - For validation (`is_train=False`): excludes `_aug` files.
     """
     files = get_image_files(path)
     
     if is_train:
-        # For training: include all files with specified orientations, with or without `_aug` suffix
-        files = [f for f in files if any(orientation in f.name for orientation in orientations)]
+        # For training: include all files with orientations and `_aug` suffix
+        files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" in f.stem]
     else:
         # For validation: exclude files with `_aug` suffix
         files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" not in f.stem]
     
     # Return unique parent directories for gestures
     return L(dict.fromkeys([f.parent for f in files]))
-
-# def get_orientation_images(o):
+# def get_gesture_sequences(path, orientations, is_train=True):
 #     """
-#     Return paths for each orientation, including `_aug*` variations if available.
+#     Gather gesture sequences from the dataset directory.
+#     - For training (`is_train=True`): includes files with and without `_aug` suffix.
+#     - For validation (`is_train=False`): excludes `_aug` files.
 #     """
-#     orientation_images = []
-#     for orientation in args.mv_orientations:
-#         # Search for files with and without `_aug*` suffix for each orientation
-#         possible_aug_files = sorted(o.glob(f"{orientation}_aug*.png"))
-        
-#         # Use the augmented file if it exists, otherwise use the default
-#         if possible_aug_files:
-#             orientation_images.append(possible_aug_files[0])  # Choose the first match if multiple
-#         else:
-#             # Fallback to non-augmented image if no augmented files are found
-#             orientation_images.append(o / f"{orientation}.png")
+#     files = get_image_files(path)
     
-#     return orientation_images
+#     if is_train:
+#         # For training: include all files with specified orientations, with or without `_aug` suffix
+#         files = [f for f in files if any(orientation in f.name for orientation in orientations)]
+#     else:
+#         # For validation: exclude files with `_aug` suffix
+#         files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" not in f.stem]
+    
+#     # Return unique parent directories for gestures
+#     return L(dict.fromkeys([f.parent for f in files]))
+
 def get_orientation_images(o):
     """
     Return paths for each orientation, including `_aug*` variations if available.
@@ -245,18 +228,35 @@ def get_orientation_images(o):
     for orientation in args.mv_orientations:
         # Search for files with and without `_aug*` suffix for each orientation
         possible_aug_files = sorted(o.glob(f"{orientation}_aug*.png"))
-        non_aug_file = o / f"{orientation}.png"
         
-        # Use the augmented file if it exists, otherwise use the non-augmented image
+        # Use the augmented file if it exists, otherwise use the default
         if possible_aug_files:
             orientation_images.append(possible_aug_files[0])  # Choose the first match if multiple
-        elif non_aug_file.exists():
-            orientation_images.append(non_aug_file)
         else:
-            # Raise an error if neither augmented nor original file is found
-            raise FileNotFoundError(f"No image found for orientation '{orientation}' in directory '{o}'")
+            # Fallback to non-augmented image if no augmented files are found
+            orientation_images.append(o / f"{orientation}.png")
     
     return orientation_images
+# def get_orientation_images(o):
+#     """
+#     Return paths for each orientation, including `_aug*` variations if available.
+#     """
+#     orientation_images = []
+#     for orientation in args.mv_orientations:
+#         # Search for files with and without `_aug*` suffix for each orientation
+#         possible_aug_files = sorted(o.glob(f"{orientation}_aug*.png"))
+#         non_aug_file = o / f"{orientation}.png"
+        
+#         # Use the augmented file if it exists, otherwise use the non-augmented image
+#         if possible_aug_files:
+#             orientation_images.append(possible_aug_files[0])  # Choose the first match if multiple
+#         elif non_aug_file.exists():
+#             orientation_images.append(non_aug_file)
+#         else:
+#             # Raise an error if neither augmented nor original file is found
+#             raise FileNotFoundError(f"No image found for orientation '{orientation}' in directory '{o}'")
+    
+#     return orientation_images
 
 
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, e2eTunerMode=False, preview=False):
