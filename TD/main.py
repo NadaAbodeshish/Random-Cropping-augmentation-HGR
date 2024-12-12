@@ -9,7 +9,7 @@ import random
 import shutil
 import sys
 import time
-from collections import OrderedDict
+from collections.abc import OrderedDict
 import traceback
 from sklearn.metrics import confusion_matrix
 import csv
