@@ -3,8 +3,8 @@ import json
 import os
 
 # Define paths
-root_database_path = '/kaggle/input/hand-gesture-sh/shrec17_dataset/HandGestureDataset_SHREC2017'
-test_txt_path = '/kaggle/input/hand-gesture-sh/shrec17_dataset/HandGestureDataset_SHREC2017/test_gestures.txt'
+root_database_path = '/kaggle/input/hand-gesture-sh/HandGestureDataset_SHREC2017'
+test_txt_path = '/kaggle/input/hand-gesture-sh/HandGestureDataset_SHREC2017/test_gestures.txt'
 
 # Create output directories
 output_dir = "./shrec17_jsons/test_jsons/"
