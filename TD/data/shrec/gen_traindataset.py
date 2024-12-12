@@ -1,8 +1,8 @@
 import numpy as np
 import json
 
-root_database_path = '/kaggle/input/hand-gesture-sh/shrec17_dataset/HandGestureDataset_SHREC2017' 
-train_txt_path = '/kaggle/input/hand-gesture-sh/shrec17_dataset/HandGestureDataset_SHREC2017/train_gestures.txt' # train_gestures.txt
+root_database_path = '/kaggle/input/hand-gesture-sh/HandGestureDataset_SHREC2017' 
+train_txt_path = '/kaggle/input/hand-gesture-sh/HandGestureDataset_SHREC2017/train_gestures.txt' # train_gestures.txt
 train_txt = np.loadtxt(train_txt_path, dtype=int)
 
 
