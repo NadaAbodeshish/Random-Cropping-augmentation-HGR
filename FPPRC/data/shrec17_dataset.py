@@ -11,7 +11,7 @@ class SHREC17Dataset(torch.utils.data.Dataset):
         self.inputs_list = self.get_inputs_list(cfg)
         subfolder = cfg.DATASETS.SHREC.PROCESS_FOLDER
         "../dataset/shrec17/HandGestureDataset_SHREC2017"
-        self.prefix = "../dataset/shrec17/Processed_HandGestureDataset_SHREC2017/"  + subfolder +  "/gesture_{}/finger_{}/subject_{}/essai_{}"
+        self.prefix = "../data/shrec17/Processed_HandGestureDataset_SHREC2017/"  + subfolder +  "/gesture_{}/finger_{}/subject_{}/essai_{}"
         self.r = re.compile('[ \t\n\r:]+')
 
     def __getitem__(self, index):
