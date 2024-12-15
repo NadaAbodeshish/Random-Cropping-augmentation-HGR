@@ -1,5 +1,3 @@
-### adapted from https://github.com/ycmin95/pointlstm-gesture-recognition-pytorch/blob/master/dataset/shrec17_process.py
-
 import sys
 sys.path.append('../')
 import re
@@ -16,7 +14,7 @@ if __name__ == "__main__":
     use_dbscan = True
 
     r = re.compile('[ \t\n\r]+')
-    dataset_prefix = "../dataset/shrec17/HandGestureDataset_SHREC2017"
+    dataset_prefix = "/kaggle/input/hand-gesture-sh"  # Updated path for Kaggle
     prefix = dataset_prefix + "/gesture_{}/finger_{}/subject_{}/essai_{}"
     train_list = open(dataset_prefix + "/train_gestures.txt").readlines()
     test_list = open(dataset_prefix + "/test_gestures.txt").readlines()
@@ -40,7 +38,7 @@ if __name__ == "__main__":
             hand_crop = cv2.medianBlur(hand_crop, 3)
             pts[i, :, :4] = utils.generate_pts_cloud_sequence(hand_crop, hand_regions, pts_size, i, use_dbscan)
             pts[i, :, 4:8] = utils.uvd2xyz_shrec(copy.deepcopy(pts[i, :, :4]))
-        save_dir = dir_path.replace('HandGestureDataset_SHREC2017', 'Processed_HandGestureDataset_SHREC2017/dbscanCluster_numPts=512')
+        save_dir = dir_path.replace('hand-gesture-sh', 'Processed_HandGestureDataset_SHREC2017/dbscanCluster_numPts=512')
         try:
             os.makedirs(save_dir)
         except FileExistsError:
