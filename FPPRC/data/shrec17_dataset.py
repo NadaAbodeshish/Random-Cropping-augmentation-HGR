@@ -57,7 +57,7 @@ class SHREC17Dataset(torch.utils.data.Dataset):
         return input_data, label, self.inputs_list[index]
 
     def get_inputs_list(self, cfg):
-        prefix = "..dataset/shrec17//HandGestureDataset_SHREC2017"
+        prefix = "/kaggle/input/hand-gesture-sh/HandGestureDataset_SHREC2017"
         if self.phase == "train":
             file_list = cfg.DATASETS.FILE_LIST_TRAIN
         elif self.phase == "val":
