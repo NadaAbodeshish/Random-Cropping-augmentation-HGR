@@ -2,7 +2,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from bps import bps
+# from bps import bps
+from FPPRC.model.backbones import bps
 
 
 def pairwise_distances(x, y):
