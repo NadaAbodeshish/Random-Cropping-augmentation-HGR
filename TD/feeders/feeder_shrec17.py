@@ -20,7 +20,8 @@ class Feeder(Dataset):
             with open(self.nw_hand17_root + 'train_samples.json', 'r') as f2:
                 json_file = json.load(f2)
             self.data_dict = json_file
-            self.flag = 'shrec17_augmented_jsons/' 
+            # self.flag = 'shrec17_augmented_jsons/' 
+            self.flag = 'train_jsons/' 
 
         
         self.bone = [(1, 2), (3, 1), (4, 3), (5, 4), (6, 5), (7, 2), (8, 7), (9, 8), (10, 9), (11, 2), (12, 11),
