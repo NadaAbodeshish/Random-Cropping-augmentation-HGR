@@ -14,7 +14,7 @@ if __name__ == "__main__":
     use_dbscan = True
 
     r = re.compile('[ \t\n\r]+')
-    dataset_prefix = "/kaggle/input/hand-gesture-sh/HandGestureDataset_SHREC2017"  # Updated path for Kaggle
+    dataset_prefix = "/kaggle/input/hand-gesture-sh/HandGestureDataset_SHREC2017"  # Path to Kaggle dataset
     prefix = dataset_prefix + "/gesture_{}/finger_{}/subject_{}/essai_{}"
     train_list = open(dataset_prefix + "/train_gestures.txt").readlines()
     test_list = open(dataset_prefix + "/test_gestures.txt").readlines()
@@ -38,9 +38,12 @@ if __name__ == "__main__":
             hand_crop = cv2.medianBlur(hand_crop, 3)
             pts[i, :, :4] = utils.generate_pts_cloud_sequence(hand_crop, hand_regions, pts_size, i, use_dbscan)
             pts[i, :, 4:8] = utils.uvd2xyz_shrec(copy.deepcopy(pts[i, :, :4]))
-        save_dir = dir_path.replace('hand-gesture-sh', 'Processed_HandGestureDataset_SHREC2017/dbscanCluster_numPts=512')
-        try:
-            os.makedirs(save_dir)
-        except FileExistsError:
-            pass
+        
+        # Define save directory in the working folder
+        save_dir = f"/kaggle/working/augmented-e2eET-Skeleton-Based-HGR-Using-Data-Level-Fusion/FPPRC/data/shrec17/processed/gesture_{splitLine[0]}/finger_{splitLine[1]}/subject_{splitLine[2]}/essai_{splitLine[3]}"
+        
+        # Create the save directory
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # Save processed data
         np.save(save_dir + "/pts_label.npy", pts)
