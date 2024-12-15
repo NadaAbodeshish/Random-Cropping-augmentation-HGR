@@ -3,7 +3,9 @@
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import PointConv, fps, radius, global_max_pool
+from torch_geometric.nn import DynamicEdgeConv as PointConv
+
+from torch_geometric.nn import fps, radius, global_max_pool
 from torch.nn import Sequential as Seq, Linear as Lin, ReLU, BatchNorm1d as BN
 
 
