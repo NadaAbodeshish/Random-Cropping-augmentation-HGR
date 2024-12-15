@@ -14,7 +14,7 @@ if __name__ == "__main__":
     use_dbscan = True
 
     r = re.compile('[ \t\n\r]+')
-    dataset_prefix = "/kaggle/input/hand-gesture-sh"  # Updated path for Kaggle
+    dataset_prefix = "/kaggle/input/hand-gesture-sh/HandGestureDataset_SHREC2017"  # Updated path for Kaggle
     prefix = dataset_prefix + "/gesture_{}/finger_{}/subject_{}/essai_{}"
     train_list = open(dataset_prefix + "/train_gestures.txt").readlines()
     test_list = open(dataset_prefix + "/test_gestures.txt").readlines()
