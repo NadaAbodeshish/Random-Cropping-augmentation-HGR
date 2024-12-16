@@ -14,7 +14,7 @@ class SHREC17Dataset(torch.utils.data.Dataset):
         self.r = re.compile('[ \t\n\r:]+')
 
         # Augmented dataset options
-        self.augmented_files = ['original_pts_label.npy', 'aug_1_pts_label.npy', 'aug_2_pts_label.npy', 'aug_3_pts_label.npy']
+        self.augmented_files = ['original_pts_label.npy', 'aug_1_pts_label.npy', 'aug_2_pts_label.npy', 'aug_0_pts_label.npy']
 
     def __getitem__(self, index):
         splitLine = self.r.split(self.inputs_list[index])
