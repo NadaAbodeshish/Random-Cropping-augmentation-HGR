@@ -55,13 +55,20 @@ These transformations are applied to increase dataset diversity, making models m
 ## Usage Instructions
 
 ### 1. Augmenting Data
-- For **e2eET** and **FPPR-PCD**:
-  1. Navigate to the respective folder.
-  2. Run the augmentation script: `python augment_data.py`.
-  3. Upload the augmented dataset to Kaggle.
+- For **e2eET**:
+  1. Download the dataset from [Google Drive](https://drive.google.com/drive/folders/1BvoxkRDBK86A3_oNdQrnC8TLvp4l0W9x) (located in the `image_d` folder).
+  2. Follow the model's data processing instructions.
+  3. Run the augmentation script: `python data_augmentation.py`.
+  4. Upload the augmented dataset to Kaggle.
+
+- For **FPPR-PCD**:
+  1. Download the datasets from [SHREC 2017](http://www-rech.telecom-lille.fr/shrec2017-hand/) and [DHG](http://www-rech.telecom-lille.fr/DHGdataset/).
+  2. Follow the model's data processing instructions.
+  3. Run the augmentation script: `python data_augment.py`.
+  4. Upload the augmented dataset to Kaggle.
 
 - For **DD-Net**:
-  1. Use the Kaggle notebook in `kaggle_notebook/` to apply the augmentation pipeline.
+  1. Use the Kaggle notebook in `kaggle_notebook/` to apply the augmentation pipeline directly.
 
 ### 2. Training and Evaluation
 - Use the Kaggle notebooks in `kaggle_notebook/` to train and evaluate the models.

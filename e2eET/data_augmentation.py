@@ -5,7 +5,7 @@ import shutil
 
 # # Define input and output directories
 input_dir = Path('../images_d/SHREC2017.mVOs-3d.28g-noisy(raw).960px-[allVOs].adaptive-mean/train')
-output_dir = Path('../images_d/SHREC2017.mVOs-3d.28g-noisy(raw).960px-[allVOs].adaptive-mean/train')
+output_dir = Path('../images_d_augmented/SHREC2017.mVOs-3d.28g-noisy(raw).960px-[allVOs].adaptive-mean/train')
 output_dir.mkdir(parents=True, exist_ok=True)
 
 # Parameters for augmentation
