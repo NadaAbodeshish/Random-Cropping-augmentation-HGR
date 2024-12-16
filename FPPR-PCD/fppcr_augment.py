@@ -8,7 +8,7 @@ num_augmentations = 3
 crop_size_ratio = 0.95
 brightness_range = (0.8, 1.2)
 contrast_range = (0.8, 1.2)
-rotation_range = (-15, 15)  # in degrees
+rotation_range = (-15, 15)  
 zoom_range = (1.0, 1.2)
 
 def augment_point_cloud(points):
