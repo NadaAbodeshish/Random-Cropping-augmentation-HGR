@@ -84,10 +84,9 @@ The results of the augmented models are documented in the Kaggle notebooks. Metr
 
 | Dataset       | e2eET (%) | Framework (%) |
 |---------------|-----------|---------------|
-| SHREC'17 14g | 97        | 98.21         |
-| SHREC'17 28g | 94.4      | 94.52         |
+| SHREC'17 14g | 96.6        | 98.21         |
+| SHREC'17 28g | 94.05      | 94.52         |
 | DHG 28g      | 91.67     | 92.98         |
-| DHG 14g      | 94        | 95.60         |
 
 ### Results Comparison for DD-Net and Proposed Framework
 
@@ -95,6 +94,13 @@ The results of the augmented models are documented in the Kaggle notebooks. Metr
 |-----------|------------|---------------|
 | JHMDB     | 81.82      | 86.36         |
 | SHREC'14  | 94.88      | 95.95         |
+
+### Results Comparison for FPPR-PCD and Proposed Framework
+
+| Dataset   | FPPR-PCD (%) | Framework (%) |
+|-----------|------------|---------------|
+| SHREC'14  | 995.9     | 96.4        |
+
 
 ---
 

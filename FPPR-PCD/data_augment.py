@@ -15,7 +15,6 @@ def augment_point_cloud(points):
     """
     Apply augmentations to the point cloud frames: crop, zoom, rotation, brightness, and contrast.
     """
-    # Ensure the points array is of type float32
     points = points.astype(np.float32)
 
     num_frames, num_points, num_features = points.shape  # Shape: (32, 512, 8)
@@ -24,7 +23,7 @@ def augment_point_cloud(points):
     crop_factor = random.uniform(crop_size_ratio, 1.0)
     for frame_idx in range(num_frames):
         crop_mask = np.linalg.norm(points[frame_idx, :, :3], axis=1) <= crop_factor
-        if np.any(crop_mask):  # Ensure at least some points remain
+        if np.any(crop_mask):  
             cropped_frame = points[frame_idx][crop_mask]
             if len(cropped_frame) < num_points:
                 # Pad to maintain the original shape
