@@ -99,7 +99,7 @@ The results of the augmented models are documented in the Kaggle notebooks. Metr
 
 | Dataset   | FPPR-PCD (%) | Framework (%) |
 |-----------|------------|---------------|
-| SHREC'14  | 995.9     | 96.4        |
+| SHREC'14  | 95.9     | 96.4        |
 
 
 ---
