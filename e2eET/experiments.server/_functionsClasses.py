@@ -363,21 +363,22 @@ class outsidersCustomCallback(TrackerCallback):
 
 import traceback
 
+        
 def i_LRFinder(learn, show_plot=False, n_attempts=0):
     try:
-        result = learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
+        # Disable progress bar or use a console-based progress bar
+        result = learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot, cbs=[])
         return result
     except Exception as e:
         n_attempts += 1
         print(f"@{n_attempts=}: i_LRFinder Exception:: {e}!")
         
-        # Handle CUDA or file errors
         if "CUDA" in str(e) or "FileNotFoundError" in str(e):
             print(f"Critical error encountered. Exiting: {e}")
             os._exit(os.EX_OK)
         elif "too many values to unpack" in str(e):
             print("Error unpacking values from lr_find result.")
-            return None  # Explicitly return None for getLR to handle
+            return None
         else:
             if n_attempts >= 69:
                 print("Max attempts reached:", traceback.format_exc())
