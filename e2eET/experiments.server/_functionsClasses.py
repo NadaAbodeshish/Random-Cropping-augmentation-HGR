@@ -17,6 +17,7 @@ from datetime import datetime
 import torch
 import torch.nn as NN
 import numpy as np
+from fastai.callback.progress import ConsoleProgressBar
 from fastai.vision.all import *
 from fastai.vision.all import aug_transforms, Resize, Normalize, imagenet_stats, GrandparentSplitter
 from fastai.torch_core import defaults
@@ -365,7 +366,8 @@ import traceback
 
         
 def i_LRFinder(learn, show_plot=False, n_attempts=0):
-    try: return learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
+    try: return learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot, cbs=[ConsoleProgressBar()])
+
 
     except Exception as e:
         n_attempts += 1
