@@ -17,7 +17,6 @@ from datetime import datetime
 import torch
 import torch.nn as NN
 import numpy as np
-from fastprogress.fastprogress import fastprogress
 from fastai.vision.all import *
 from fastai.vision.all import aug_transforms, Resize, Normalize, imagenet_stats, GrandparentSplitter
 from fastai.torch_core import defaults
@@ -364,21 +363,25 @@ class outsidersCustomCallback(TrackerCallback):
 
 import traceback
 
-        
 def i_LRFinder(learn, show_plot=False, n_attempts=0):
-    fastprogress.printing = True
-    try: return learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
-
-
+    try:
+        result = learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
+        return result
     except Exception as e:
         n_attempts += 1
         print(f"@{n_attempts=}: i_LRFinder Exception:: {e}!")
-        if "CUDA" in str(e):
-            Logger(f"CUDA RuntimeError - {e}!") ; os._exit(os.EX_OK)
-        else:  # "no elements" in str(e) or "out of bounds" in str(e)  or "numerical gradient" in str(e)
-            if n_attempts == 69:
-                print(f"i_LRFinder Exception::", traceback.format_exc())
-                Logger(f"i_LRFinder Exception:: {e}!") ; os._exit(os.EX_OK)
+        
+        # Handle CUDA or file errors
+        if "CUDA" in str(e) or "FileNotFoundError" in str(e):
+            print(f"Critical error encountered. Exiting: {e}")
+            os._exit(os.EX_OK)
+        elif "too many values to unpack" in str(e):
+            print("Error unpacking values from lr_find result.")
+            return None  # Explicitly return None for getLR to handle
+        else:
+            if n_attempts >= 69:
+                print("Max attempts reached:", traceback.format_exc())
+                os._exit(os.EX_OK)
             return i_LRFinder(learn, show_plot, n_attempts)
 
 def i_LRHistorical(n_classes, i_tag):
