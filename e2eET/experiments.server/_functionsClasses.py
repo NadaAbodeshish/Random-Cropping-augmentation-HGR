@@ -132,8 +132,8 @@ def ImageTupleBlock():
 class e2eTunerImageTuples(fastuple):
     @classmethod
     def create(cls, fns): 
-        # Convert images to tensors directly
-        imgs = tuple(tensor(PILImage.create(f)).permute(2, 0, 1) for f in fns)
+        # Convert images to float tensors
+        imgs = tuple(tensor(PILImage.create(f)).permute(2, 0, 1).float() for f in fns)
         label = tuple([ord(c) for c in format(fns[0].parent.parent.name, "32")])
         return cls((imgs, label))
 
@@ -156,6 +156,7 @@ class e2eTunerImageTuples(fastuple):
 
         # Concatenate images for display
         return show_image(torch.cat(imgs, dim=2), figsize=[2.5 * len(imgs)] * 2, ctx=ctx, **kwargs)
+        
 
 def e2eTunerImageTupleBlock():
     return TransformBlock(type_tfms=e2eTunerImageTuples.create, batch_tfms=IntToFloatTensor)
