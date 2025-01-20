@@ -379,7 +379,6 @@ def FitFlatCosine(learn, i_tag, i_eps, i_pct_start, e_epochs_lr_accuracy, finetu
 
     return (learn, oCCb.e_epochs, e_lr, oCCb.e_accuracy)
 # -----------------------------------------------
-# Add the CutMix class to _functionsClasses.py (already present in your code)
 class CutMix(Callback):
     """Applies the CutMix augmentation during training."""
     def __init__(self, alpha=1.0):
@@ -389,7 +388,14 @@ class CutMix(Callback):
         if not self.training: 
             return  # Only apply during training
 
+        # Extract tensors from custom data structure if needed
         x, y = self.xb[0], self.yb[0]
+        if isinstance(x, e2eTunerImageTuples):  # Handle custom wrapper
+            x = torch.stack([tensor(img) for img in x[0]])
+        if not hasattr(x, 'size'):
+            raise ValueError(f"Input tensor does not have `.size()` attribute! Got {type(x)}")
+
+        # Generate lambda and calculate CutMix region
         lam = np.random.beta(self.alpha, self.alpha)
         batch_size, _, h, w = x.size()
         perm = torch.randperm(batch_size).to(x.device)
@@ -404,6 +410,7 @@ class CutMix(Callback):
         y1 = max(cy - cut_h // 2, 0)
         y2 = min(cy + cut_h // 2, h)
 
+        # Apply CutMix to images and update labels
         x[:, :, y1:y2, x1:x2] = x_perm[:, :, y1:y2, x1:x2]
         lam = 1 - ((x2 - x1) * (y2 - y1) / (h * w))
         self.learn.yb = (y, y_perm, lam)
@@ -778,44 +785,7 @@ def generateModelGraph(model, dls, tag="e2eEnsembleTuner"):
 import torch
 import random
 
-class CutMix(Callback):
-    """Applies the CutMix augmentation during training."""
-    def __init__(self, alpha=1.0):
-        self.alpha = alpha
 
-    def before_batch(self):
-        if not self.training: 
-            return  # Only apply during training
-
-        # Get the current batch images and labels
-        x, y = self.x, self.y
-
-        # Generate lambda from the beta distribution and define bounding box
-        lam = torch.distributions.Beta(self.alpha, self.alpha).sample().item()
-        batch_size, _, h, w = x.size()
         
-        # Randomly select a second set of images and labels
-        perm = torch.randperm(batch_size)
-        x_perm, y_perm = x[perm], y[perm]
-        
-        # Define the CutMix bounding box
-        cut_rat = torch.sqrt(1.0 - lam)
-        cut_w = (w * cut_rat).int()
-        cut_h = (h * cut_rat).int()
 
-        # Ensure that bounding box is within the image dimensions
-        cx = torch.randint(w, (1,)).item()
-        cy = torch.randint(h, (1,)).item()
-
-        x1 = torch.clamp(cx - cut_w // 2, 0, w)
-        x2 = torch.clamp(cx + cut_w // 2, 0, w)
-        y1 = torch.clamp(cy - cut_h // 2, 0, h)
-        y2 = torch.clamp(cy + cut_h // 2, 0, h)
-
-        # Apply CutMix by combining two images
-        x[:, :, y1:y2, x1:x2] = x_perm[:, :, y1:y2, x1:x2]
-        
-        # Adjust labels with lam to account for mixed regions
-        lam = 1 - ((x2 - x1) * (y2 - y1) / (h * w))
-        self.learn.yb = ((y, y_perm, lam),)
 # -----------------------------------------------
