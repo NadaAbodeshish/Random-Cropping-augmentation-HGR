@@ -398,7 +398,6 @@ def FitFlatCosine(learn, i_tag, i_eps, i_pct_start, e_epochs_lr_accuracy, finetu
     return (learn, oCCb.e_epochs, e_lr, oCCb.e_accuracy)
 # -----------------------------------------------
 
-
 class CutMix(Callback):
     """Applies the CutMix augmentation during training."""
     def __init__(self, alpha=1.0):
@@ -413,7 +412,7 @@ class CutMix(Callback):
         print(f"Debug: Type of xb[0]: {type(self.xb[0])}")
 
         if isinstance(x, e2eTunerImageTuples):
-            # Unpack images and convert to tensor
+            # Extract and stack image tensors
             images = torch.stack(x[0])  # Unpack and stack images
             print(f"Debug: Extracted images shape: {images.shape}, dtype: {images.dtype}")
         else:
@@ -422,6 +421,9 @@ class CutMix(Callback):
         # Ensure images is a tensor
         if not isinstance(images, torch.Tensor):
             raise ValueError(f"CutMix expected a Tensor, but got {type(images)}")
+
+        # Move images to the same device as the learner
+        images = images.to(self.learn.dls.device)
 
         # Generate lambda and calculate CutMix region
         lam = np.random.beta(self.alpha, self.alpha)
@@ -458,7 +460,7 @@ class CutMix(Callback):
             lam * self.loss_func(self.pred, y1) +
             (1 - lam) * self.loss_func(self.pred, y2)
         )
-        self.learn.loss = self.learn.loss_grad.clone()
+        self.learn.loss = self.learn.loss_grad.clone()    
 
 class multiOrientationModel(Module):
     def __init__(self, encoder, head, nf, debug=False):
