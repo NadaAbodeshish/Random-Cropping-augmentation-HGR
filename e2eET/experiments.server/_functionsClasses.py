@@ -401,18 +401,18 @@ class CutMix(Callback):
         if not self.training:
             return  # Only apply during training
 
-        # Extract tensors from e2eTunerImageTuples
+        # Extract images and labels
         x, y = self.xb[0], self.yb[0]
-        if isinstance(x, e2eTunerImageTuples):
-            # Extract and stack image tensors
-            images = torch.stack([img for img in x[0]])  # Unwrap e2eTunerImageTuples
-        else:
-            images = x  # Assume it's already a tensor
         print(f"Debug: Type of xb[0]: {type(self.xb[0])}")
         if isinstance(self.xb[0], e2eTunerImageTuples):
-            print(f"Debug: Image tensor shape: {torch.stack([img for img in self.xb[0][0]]).shape}")
+            print(f"Debug: e2eTunerImageTuples contents: {self.xb[0]}")
         else:
-            print(f"Debug: Image tensor shape: {self.xb[0].shape}")
+            print(f"Debug: Tensor contents: {self.xb[0].shape}")
+        if isinstance(x, e2eTunerImageTuples):
+            # Extract and stack images from the custom structure
+            images = torch.stack([tensor(img).float() for img in x[0]])
+        else:
+            images = x
 
         # Ensure images is a tensor
         if not isinstance(images, torch.Tensor):
@@ -437,7 +437,7 @@ class CutMix(Callback):
         images[:, :, y1:y2, x1:x2] = images_perm[:, :, y1:y2, x1:x2]
         lam = 1 - ((x2 - x1) * (y2 - y1) / (h * w))
 
-        # Repackage into e2eTunerImageTuples if necessary
+        # Rewrap into e2eTunerImageTuples if necessary
         if isinstance(x, e2eTunerImageTuples):
             self.learn.xb = (e2eTunerImageTuples.create([images]),)
         else:
