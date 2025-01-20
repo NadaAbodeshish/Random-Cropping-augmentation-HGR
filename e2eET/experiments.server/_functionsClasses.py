@@ -397,23 +397,24 @@ class CutMix(Callback):
         if not self.training:
             return  # Only apply during training
 
-        # Unpack images if using a custom tuple-like wrapper
+        # Unpack images and process custom wrappers
         x, y = self.xb[0], self.yb[0]
-        print(f"Debug: Type of xb: {type(self.xb[0])}, First item: {self.xb[0][0]}")
 
-        # Check if x is an e2eTunerImageTuples object and convert to tensor
         if isinstance(x, e2eTunerImageTuples):
-            x = torch.stack([tensor(img) for img in x[0]])
+            # Extract tensors from the custom wrapper
+            images = torch.stack([tensor(img) for img in x[0]])  # Convert to a tensor batch
+        else:
+            images = x
 
-        # Validate x is now a tensor and proceed
-        if not isinstance(x, torch.Tensor):
-            raise ValueError(f"Input data is not a tensor after unpacking! Got type {type(x)}")
+        # Ensure images is a tensor
+        if not isinstance(images, torch.Tensor):
+            raise ValueError(f"CutMix expected a Tensor, but got {type(images)}")
 
         # Generate lambda and calculate CutMix region
         lam = np.random.beta(self.alpha, self.alpha)
-        batch_size, _, h, w = x.size()
-        perm = torch.randperm(batch_size).to(x.device)
-        x_perm, y_perm = x[perm], y[perm]
+        batch_size, _, h, w = images.size()
+        perm = torch.randperm(batch_size).to(images.device)
+        images_perm, y_perm = images[perm], y[perm]
 
         cut_rat = np.sqrt(1.0 - lam)
         cut_w, cut_h = int(w * cut_rat), int(h * cut_rat)
@@ -424,11 +425,17 @@ class CutMix(Callback):
         y1 = max(cy - cut_h // 2, 0)
         y2 = min(cy + cut_h // 2, h)
 
-        # Apply CutMix to images
-        x[:, :, y1:y2, x1:x2] = x_perm[:, :, y1:y2, x1:x2]
+        # Apply CutMix
+        images[:, :, y1:y2, x1:x2] = images_perm[:, :, y1:y2, x1:x2]
         lam = 1 - ((x2 - x1) * (y2 - y1) / (h * w))
 
-        # Update labels for CutMix
+        # Rewrap the modified images into e2eTunerImageTuples
+        if isinstance(x, e2eTunerImageTuples):
+            self.learn.xb = (e2eTunerImageTuples.create([images]),)
+        else:
+            self.learn.xb = (images,)
+
+        # Update labels
         self.learn.yb = (y, y_perm, lam)
 
     def after_loss(self):
