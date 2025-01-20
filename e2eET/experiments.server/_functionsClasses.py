@@ -223,8 +223,8 @@ def multiOrientationDataLoader(
     # Define the DataBlock
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=get_items,
-        get_x=get_orientation_images,  # Assuming this extracts the correct input images
+        get_items=get_gesture_sequences,
+        get_x=get_orientation_images,
         get_y=get_y_from_path,
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
@@ -334,18 +334,36 @@ def Cleaner(target=None):
 # -----------------------------------------------
 
 class MixUpTransform(Transform):
-    def encodes(self, batch):
-        if not isinstance(batch, tuple) or len(batch) != 2:
-            print(f"Skipping invalid batch: {batch}")
-            return batch  # Skip processing invalid batches
+    """
+    A FastAI-compatible transform to apply MixUp dynamically to a batch of data.
+    """
+    def __init__(self, alpha=0.4):
+        self.alpha = alpha  # Store MixUp alpha as a class attribute
 
+    def encodes(self, batch):
+        """
+        Apply MixUp to a batch.
+
+        Args:
+            batch: A tuple (x, y) where x is the batch of inputs and y is the batch of labels.
+
+        Returns:
+            A tuple (x_mixed, y_mixed) with MixUp applied.
+        """
+        # Ensure the batch is a tuple with inputs and labels
+        if not isinstance(batch, tuple) or len(batch) != 2:
+            raise ValueError("Expected batch to be a tuple (x, y) where x is the inputs and y is the labels.")
+        
         x, y = batch
 
+        # Ensure labels are tensors
         if not isinstance(y, torch.Tensor): 
             y = tensor(y).to(x.device)
 
+        # Apply MixUp
         lam = np.random.beta(self.alpha, self.alpha)
         index = torch.randperm(x.size(0))
+
         x_mixed = lam * x + (1 - lam) * x[index, :]
         if y.dtype == torch.float:  # For one-hot encoded labels
             y_mixed = lam * y + (1 - lam) * y[index]
