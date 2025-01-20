@@ -208,17 +208,14 @@ def multiOrientationDataLoader(
         get_y=parent_label,
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats), MixUpTransform(alpha=0.4)],
+        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats), mixup_tfms],  # Add MixUp here
     )
-
-
 
     # Create data loaders
     dls = multiDHG1428.dataloaders(
         ds_directory, bs=bs, worker_init_fn=_e_seed_worker,
         generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0
     )
-    print(f"Batch structure: {dls.one_batch()}")
     return dls if return_dls else multiDHG1428.datasets(ds_directory, verbose=False)
 
 
@@ -297,19 +294,36 @@ def Cleaner(target=None):
 # -----------------------------------------------
 
 class MixUpTransform(Transform):
+    """
+    A FastAI-compatible transform to apply MixUp dynamically to a batch of data.
+    """
+    def __init__(self, alpha=0.4):
+        super().__init__()
+        self.alpha = alpha  # Store MixUp alpha as a class attribute
+
     def encodes(self, batch):
-        # Check if the batch is a tuple
+        """
+        Apply MixUp to a batch.
+
+        Args:
+            batch: A tuple (x, y) where x is the batch of inputs and y is the batch of labels.
+
+        Returns:
+            A tuple (x_mixed, y_mixed) with MixUp applied.
+        """
         if not isinstance(batch, tuple) or len(batch) != 2:
-            print(f"Unexpected batch structure: {type(batch)}, {len(batch) if isinstance(batch, tuple) else 'N/A'}")
             raise ValueError("Expected batch to be a tuple (x, y) where x is the inputs and y is the labels.")
         
         x, y = batch
+
         # Ensure labels are tensors
         if not isinstance(y, torch.Tensor): 
             y = tensor(y).to(x.device)
 
         lam = np.random.beta(self.alpha, self.alpha)
         index = torch.randperm(x.size(0))
+
+        # Apply MixUp
         x_mixed = lam * x + (1 - lam) * x[index, :]
         if y.dtype == torch.float:  # For one-hot encoded labels
             y_mixed = lam * y + (1 - lam) * y[index]
