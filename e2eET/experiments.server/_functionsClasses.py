@@ -184,23 +184,35 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
 
-def mixup_batch(x, y, alpha=0.4):
+class MixUpTransform(Transform):
     """
-    Apply MixUp to a batch of data dynamically.
-    
-    Args:
-        x: Input batch (tensor of images).
-        y: Labels (one-hot encoded or integer class indices).
-        alpha: Beta distribution parameter for MixUp.
+    A FastAI-compatible transform to apply MixUp dynamically to a batch of data.
+    """
+    def __init__(self, alpha=0.4):
+        self.alpha = alpha
 
-    Returns:
-        Mixed inputs and labels.
-    """
-    lam = np.random.beta(alpha, alpha)
-    index = torch.randperm(x.size(0))
-    x_mixed = lam * x + (1 - lam) * x[index, :]
-    y_mixed = lam * y + (1 - lam) * y[index] if y.dtype == torch.float else y
-    return x_mixed, y_mixed
+    def encodes(self, batch):
+        """
+        Apply MixUp to a batch.
+
+        Args:
+            batch: A tuple (x, y) where x is the batch of inputs and y is the batch of labels.
+
+        Returns:
+            A tuple (x_mixed, y_mixed) with MixUp applied.
+        """
+        x, y = batch
+        if not isinstance(y, torch.Tensor): 
+            y = tensor(y).to(x.device)  # Ensure labels are tensors
+        lam = np.random.beta(self.alpha, self.alpha)
+        index = torch.randperm(x.size(0))
+        x_mixed = lam * x + (1 - lam) * x[index, :]
+        if y.dtype == torch.float:  # For one-hot encoded labels
+            y_mixed = lam * y + (1 - lam) * y[index]
+        else:  # For integer labels (class indices)
+            y_mixed = y
+        return x_mixed, y_mixed
+
 
 
 def multiOrientationDataLoader(
@@ -212,6 +224,9 @@ def multiOrientationDataLoader(
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
 
+    # Add MixUp as a batch transform
+    mixup_tfms = MixUpTransform(alpha=0.4)
+
     # Define DataBlock
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
@@ -220,7 +235,7 @@ def multiOrientationDataLoader(
         get_y=parent_label,
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats), mixup_batch],  # Add MixUp here
+        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats), mixup_tfms],  # Add MixUp here
     )
 
     # Create data loaders
@@ -229,6 +244,7 @@ def multiOrientationDataLoader(
         generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0
     )
     return dls if return_dls else multiDHG1428.datasets(ds_directory, verbose=False)
+
 
 # def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
 #     tfms = aug_transforms(
