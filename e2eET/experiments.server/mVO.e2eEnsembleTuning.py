@@ -78,7 +78,12 @@ from _functionsClasses import *
 # [create.dls.model.learn]
 # ---------------------------
 # print(f"Debug: Dataset directory is {deets.ds_directory}")
-dls = multiOrientationDataLoader(deets.ds_directory, bs=args.bs, img_size=args.init_img_sz, e2eTunerMode=True, preview=True)
+# dls = multiOrientationDataLoader(deets.ds_directory, bs=args.bs, img_size=args.init_img_sz, e2eTunerMode=True, preview=True)
+dls = multiOrientationDataLoader(
+    deets.ds_directory, bs=args.bs, img_size=args.init_img_sz, 
+    e2eTunerMode=True, preview=True
+)
+
 model = end2endTunerModel(
     archMultiVOs=BaseArchitectures[args.mvo_architecture],
     archTuner=BaseArchitectures[args.tnr_architecture],
