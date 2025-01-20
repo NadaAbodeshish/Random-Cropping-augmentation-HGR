@@ -164,9 +164,6 @@ def get_gesture_sequences(path):
 def get_orientation_images(o):
     return [(o / f"{_vo}.png") for _vo in args.mv_orientations]
 
-def get_label_from_path(o):
-    return o.parent.parent.name  # Assuming the class is two levels up in the directory structure
-
 def get_mVOs_img_size(subset):
     assert "fastai.data.core.TfmdDL" in str(type(subset)), "train/valid dls subset should be provided!"
     return PILImage.create(f"{subset.items[0]}/{args.mv_orientations[0]}.png").size
@@ -188,19 +185,12 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     return ctxs
 
 
-def multiOrientationDataLoader(
-    ds_directory, bs, img_size, shuffle=True, return_dls=True,
-    ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None
-):
-    """
-    Create data loaders for the multi-orientation gesture dataset.
-    """
+def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
 
-    # Define the DataBlock
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
         get_items=get_gesture_sequences,
@@ -208,58 +198,30 @@ def multiOrientationDataLoader(
         get_y=parent_label,
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats), MixUpTransform(alpha=0.4)],  # Add MixUp
+        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
     )
 
+    ds = multiDHG1428.datasets(ds_directory, verbose=False)
     if return_dls:
-        dls = multiDHG1428.dataloaders(
-            ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen,
-            device=defaults.device, shuffle=shuffle, num_workers=0
-        )
-        print(dls.one_batch()) 
+        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=e_seed_worker, generator=e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
+        # clear_output(wait=False)
+        assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
+
+        if preview:
+            print(dedent(f"""
+            Dataloader has been created successfully...
+            The dataloader has {len(dls.vocab)} ({dls.c}) classes: {dls.vocab}
+            Training set [len={len(dls.train.items)}, img_sz={get_mVOs_img_size(dls.train)}] loaded on device: {dls.train.device}
+            Validation set [len={len(dls.valid.items)}, img_sz={get_mVOs_img_size(dls.valid)}] loaded on device: {dls.valid.device}
+            Previewing loaded data [1] and applied transforms [2]...
+            """))
+            dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
+            dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
+        else: clear_output(wait=False)
+
         return dls
 
-    return multiDHG1428.datasets(ds_directory)
-
-
-
-# def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
-#     tfms = aug_transforms(
-#         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
-#         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
-#     )
-
-#     multiDHG1428 = DataBlock(
-#         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-#         get_items=get_gesture_sequences,
-#         get_x=get_orientation_images,
-#         get_y=parent_label,
-#         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
-#         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-#         batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
-#     )
-
-#     ds = multiDHG1428.datasets(ds_directory, verbose=False)
-#     if return_dls:
-#         dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=e_seed_worker, generator=e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
-#         # clear_output(wait=False)
-#         assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
-
-#         if preview:
-#             print(dedent(f"""
-#             Dataloader has been created successfully...
-#             The dataloader has {len(dls.vocab)} ({dls.c}) classes: {dls.vocab}
-#             Training set [len={len(dls.train.items)}, img_sz={get_mVOs_img_size(dls.train)}] loaded on device: {dls.train.device}
-#             Validation set [len={len(dls.valid.items)}, img_sz={get_mVOs_img_size(dls.valid)}] loaded on device: {dls.valid.device}
-#             Previewing loaded data [1] and applied transforms [2]...
-#             """))
-#             dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
-#             dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
-#         else: clear_output(wait=False)
-
-#         return dls
-
-#     else: return ds
+    else: return ds
 # -----------------------------------------------
 
 
@@ -297,44 +259,6 @@ def Cleaner(target=None):
             _cleanup(_f)
 # -----------------------------------------------
 
-class MixUpTransform(Transform):
-    """
-    A FastAI-compatible transform for applying MixUp dynamically to a batch.
-    """
-    def __init__(self, alpha=0.4):
-        self.alpha = alpha  # Store MixUp alpha value internally
-
-    def encodes(self, batch):
-        """
-        Apply MixUp to a batch of inputs and labels.
-
-        Args:
-            batch (tuple): A tuple (x, y), where x is the input batch and y is the label batch.
-
-        Returns:
-            tuple: Mixed inputs and mixed labels.
-        """
-        print(f"Batch structure: {type(batch)}, {len(batch) if isinstance(batch, tuple) else 'N/A'}")
-        if not isinstance(batch, tuple) or len(batch) != 2:
-            raise ValueError("Expected batch to be a tuple (x, y) where x is inputs and y is labels.")
-        
-       
-        x, y = batch
-
-        if not isinstance(y, torch.Tensor):
-            y = tensor(y).to(x.device)
-
-        lam = np.random.beta(self.alpha, self.alpha)  # Lambda from Beta distribution
-        indices = torch.randperm(x.size(0))           # Shuffle indices for mixing
-
-        # Apply MixUp
-        x_mixed = lam * x + (1 - lam) * x[indices, :]
-        if y.dtype == torch.float:  # Handle one-hot labels
-            y_mixed = lam * y + (1 - lam) * y[indices]
-        else:  # Handle integer labels
-            y_mixed = lam * y + (1 - lam) * y[indices]
-
-        return x_mixed, y_mixed
 
 class outsidersCustomCallback(TrackerCallback):
     order = TrackerCallback.order + 4
@@ -455,7 +379,42 @@ def FitFlatCosine(learn, i_tag, i_eps, i_pct_start, e_epochs_lr_accuracy, finetu
 
     return (learn, oCCb.e_epochs, e_lr, oCCb.e_accuracy)
 # -----------------------------------------------
+# Add the CutMix class to _functionsClasses.py (already present in your code)
+class CutMix(Callback):
+    """Applies the CutMix augmentation during training."""
+    def __init__(self, alpha=1.0):
+        self.alpha = alpha
 
+    def before_batch(self):
+        if not self.training: 
+            return  # Only apply during training
+
+        x, y = self.xb[0], self.yb[0]
+        lam = np.random.beta(self.alpha, self.alpha)
+        batch_size, _, h, w = x.size()
+        perm = torch.randperm(batch_size).to(x.device)
+        x_perm, y_perm = x[perm], y[perm]
+
+        cut_rat = np.sqrt(1.0 - lam)
+        cut_w, cut_h = int(w * cut_rat), int(h * cut_rat)
+
+        cx, cy = np.random.randint(w), np.random.randint(h)
+        x1 = max(cx - cut_w // 2, 0)
+        x2 = min(cx + cut_w // 2, w)
+        y1 = max(cy - cut_h // 2, 0)
+        y2 = min(cy + cut_h // 2, h)
+
+        x[:, :, y1:y2, x1:x2] = x_perm[:, :, y1:y2, x1:x2]
+        lam = 1 - ((x2 - x1) * (y2 - y1) / (h * w))
+        self.learn.yb = (y, y_perm, lam)
+
+    def after_loss(self):
+        y1, y2, lam = self.yb
+        self.learn.loss_grad = (
+            lam * self.loss_func(self.pred, y1) +
+            (1 - lam) * self.loss_func(self.pred, y2)
+        )
+        self.learn.loss = self.learn.loss_grad.clone()
 
 class multiOrientationModel(Module):
     def __init__(self, encoder, head, nf, debug=False):
