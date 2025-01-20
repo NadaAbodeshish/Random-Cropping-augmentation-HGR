@@ -164,6 +164,9 @@ def get_gesture_sequences(path):
 def get_orientation_images(o):
     return [(o / f"{_vo}.png") for _vo in args.mv_orientations]
 
+def get_label_from_path(o):
+    return o.parent.parent.name  # Assuming the class is two levels up in the directory structure
+
 def get_mVOs_img_size(subset):
     assert "fastai.data.core.TfmdDL" in str(type(subset)), "train/valid dls subset should be provided!"
     return PILImage.create(f"{subset.items[0]}/{args.mv_orientations[0]}.png").size
@@ -213,6 +216,7 @@ def multiOrientationDataLoader(
             ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen,
             device=defaults.device, shuffle=shuffle, num_workers=0
         )
+        print(dls.one_batch()) 
         return dls
 
     return multiDHG1428.datasets(ds_directory)
@@ -310,9 +314,11 @@ class MixUpTransform(Transform):
         Returns:
             tuple: Mixed inputs and mixed labels.
         """
+        print(f"Batch structure: {type(batch)}, {len(batch) if isinstance(batch, tuple) else 'N/A'}")
         if not isinstance(batch, tuple) or len(batch) != 2:
             raise ValueError("Expected batch to be a tuple (x, y) where x is inputs and y is labels.")
         
+       
         x, y = batch
 
         if not isinstance(y, torch.Tensor):
