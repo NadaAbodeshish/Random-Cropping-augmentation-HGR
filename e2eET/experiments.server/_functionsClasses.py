@@ -408,6 +408,11 @@ class CutMix(Callback):
             images = torch.stack([img for img in x[0]])  # Unwrap e2eTunerImageTuples
         else:
             images = x  # Assume it's already a tensor
+        print(f"Debug: Type of xb[0]: {type(self.xb[0])}")
+        if isinstance(self.xb[0], e2eTunerImageTuples):
+            print(f"Debug: Image tensor shape: {torch.stack([img for img in self.xb[0][0]]).shape}")
+        else:
+            print(f"Debug: Image tensor shape: {self.xb[0].shape}")
 
         # Ensure images is a tensor
         if not isinstance(images, torch.Tensor):
