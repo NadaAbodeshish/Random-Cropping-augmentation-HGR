@@ -401,14 +401,13 @@ class CutMix(Callback):
         if not self.training:
             return  # Only apply during training
 
-        # Unpack images and process custom wrappers
+        # Extract tensors from e2eTunerImageTuples
         x, y = self.xb[0], self.yb[0]
-
         if isinstance(x, e2eTunerImageTuples):
-            # Extract tensors from the custom wrapper
-            images = torch.stack([tensor(img) for img in x[0]])  # Convert to a tensor batch
+            # Extract and stack image tensors
+            images = torch.stack([img for img in x[0]])  # Unwrap e2eTunerImageTuples
         else:
-            images = x
+            images = x  # Assume it's already a tensor
 
         # Ensure images is a tensor
         if not isinstance(images, torch.Tensor):
@@ -429,17 +428,17 @@ class CutMix(Callback):
         y1 = max(cy - cut_h // 2, 0)
         y2 = min(cy + cut_h // 2, h)
 
-        # Apply CutMix
+        # Apply CutMix augmentation
         images[:, :, y1:y2, x1:x2] = images_perm[:, :, y1:y2, x1:x2]
         lam = 1 - ((x2 - x1) * (y2 - y1) / (h * w))
 
-        # Rewrap the modified images into e2eTunerImageTuples
+        # Repackage into e2eTunerImageTuples if necessary
         if isinstance(x, e2eTunerImageTuples):
             self.learn.xb = (e2eTunerImageTuples.create([images]),)
         else:
             self.learn.xb = (images,)
 
-        # Update labels
+        # Update labels for CutMix
         self.learn.yb = (y, y_perm, lam)
 
     def after_loss(self):
