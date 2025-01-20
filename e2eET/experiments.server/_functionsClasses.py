@@ -397,7 +397,6 @@ def FitFlatCosine(learn, i_tag, i_eps, i_pct_start, e_epochs_lr_accuracy, finetu
 
     return (learn, oCCb.e_epochs, e_lr, oCCb.e_accuracy)
 # -----------------------------------------------
-
 class CutMix(Callback):
     """Applies the CutMix augmentation during training."""
     def __init__(self, alpha=1.0):
@@ -411,19 +410,18 @@ class CutMix(Callback):
         x, y = self.xb[0], self.yb[0]
         print(f"Debug: Type of xb[0]: {type(self.xb[0])}")
 
+        # Handle e2eTunerImageTuples
         if isinstance(x, e2eTunerImageTuples):
             # Extract and stack image tensors
-            images = torch.stack(x[0])  # Unpack and stack images
-            print(f"Debug: Extracted images shape: {images.shape}, dtype: {images.dtype}")
+            images = torch.stack([img.to(self.learn.dls.device) for img in x[0]])
+            print(f"Debug: Extracted images shape: {images.shape}, dtype: {images.dtype}, device: {images.device}")
         else:
-            images = x
+            images = x.to(self.learn.dls.device)
+            print(f"Debug: Tensor input shape: {images.shape}, device: {images.device}")
 
         # Ensure images is a tensor
         if not isinstance(images, torch.Tensor):
             raise ValueError(f"CutMix expected a Tensor, but got {type(images)}")
-
-        # Move images to the same device as the learner
-        images = images.to(self.learn.dls.device)
 
         # Generate lambda and calculate CutMix region
         lam = np.random.beta(self.alpha, self.alpha)
@@ -446,7 +444,7 @@ class CutMix(Callback):
 
         # Rewrap into e2eTunerImageTuples if necessary
         if isinstance(x, e2eTunerImageTuples):
-            self.learn.xb = (e2eTunerImageTuples((images, x[1])),)  # Rewrap images and original labels
+            self.learn.xb = (e2eTunerImageTuples.create((images, x[1])),)  # Rewrap images and original labels
             print(f"Debug: Rewrapped xb type: {type(self.learn.xb[0])}")
         else:
             self.learn.xb = (images,)
