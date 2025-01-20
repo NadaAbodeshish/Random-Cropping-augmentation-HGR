@@ -184,39 +184,79 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
 
-
-
-
-
 def multiOrientationDataLoader(
-        ds_directory, bs, img_size, shuffle=True, return_dls=True,
-        ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
+    ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid",
+    e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None
+):
+    """
+    Create a data loader for the multi-orientation gesture dataset.
+
+    Args:
+        ds_directory: Path to the dataset directory.
+        bs: Batch size.
+        img_size: Image size for resizing.
+        shuffle: Whether to shuffle the dataset.
+        return_dls: If True, return the dataloaders; else return the datasets.
+        ds_valid: Name of the validation folder.
+        e2eTunerMode: If True, use the tuner block for gesture images.
+        preview: If True, display dataset and transformations.
+        _e_seed_worker: Seed function for reproducibility.
+        _e_repr_gen: Random generator for reproducibility.
+
+    Returns:
+        DataLoader or Dataset.
+    """
     # Default augmentations
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
         max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
     )
 
-    # Add MixUp as a batch transform
-    mixup_tfms = MixUpTransform(alpha=0.4)
+    # Custom function to fetch items
+    def get_items(path):
+        return get_image_files(path)  # Collect all image files recursively
 
-    # Define DataBlock
+    # Extract the class name from the folder structure
+    def get_y_from_path(file_path):
+        return file_path.parent.parent.name  # Navigate up two levels to get the class
+
+    # Define the DataBlock
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=get_gesture_sequences,
-        get_x=get_orientation_images,
-        get_y=parent_label,
+        get_items=get_items,
+        get_x=get_orientation_images,  # Assuming this extracts the correct input images
+        get_y=get_y_from_path,
         splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats), mixup_tfms],  # Add MixUp here
+        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats), MixUpTransform(alpha=0.4)],
     )
 
-    # Create data loaders
-    dls = multiDHG1428.dataloaders(
-        ds_directory, bs=bs, worker_init_fn=_e_seed_worker,
-        generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0
-    )
-    return dls if return_dls else multiDHG1428.datasets(ds_directory, verbose=False)
+    # Create datasets
+    ds = multiDHG1428.datasets(ds_directory, verbose=False)
+    if return_dls:
+        dls = multiDHG1428.dataloaders(
+            ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen,
+            device=defaults.device, shuffle=shuffle, num_workers=0
+        )
+        # Verify class count
+        assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
+
+        if preview:
+            print(dedent(f"""
+            Dataloader has been created successfully...
+            The dataloader has {len(dls.vocab)} ({dls.c}) classes: {dls.vocab}
+            Training set [len={len(dls.train.items)}, img_sz={get_mVOs_img_size(dls.train)}] loaded on device: {dls.train.device}
+            Validation set [len={len(dls.valid.items)}, img_sz={get_mVOs_img_size(dls.valid)}] loaded on device: {dls.valid.device}
+            Previewing loaded data [1] and applied transforms [2]...
+            """))
+            dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
+            dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
+        else:
+            clear_output(wait=False)
+
+        return dls
+    else:
+        return ds
 
 
 # def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
@@ -294,36 +334,18 @@ def Cleaner(target=None):
 # -----------------------------------------------
 
 class MixUpTransform(Transform):
-    """
-    A FastAI-compatible transform to apply MixUp dynamically to a batch of data.
-    """
-    def __init__(self, alpha=0.4):
-        super().__init__()
-        self.alpha = alpha  # Store MixUp alpha as a class attribute
-
     def encodes(self, batch):
-        """
-        Apply MixUp to a batch.
-
-        Args:
-            batch: A tuple (x, y) where x is the batch of inputs and y is the batch of labels.
-
-        Returns:
-            A tuple (x_mixed, y_mixed) with MixUp applied.
-        """
         if not isinstance(batch, tuple) or len(batch) != 2:
-            raise ValueError("Expected batch to be a tuple (x, y) where x is the inputs and y is the labels.")
-        
+            print(f"Skipping invalid batch: {batch}")
+            return batch  # Skip processing invalid batches
+
         x, y = batch
 
-        # Ensure labels are tensors
         if not isinstance(y, torch.Tensor): 
             y = tensor(y).to(x.device)
 
         lam = np.random.beta(self.alpha, self.alpha)
         index = torch.randperm(x.size(0))
-
-        # Apply MixUp
         x_mixed = lam * x + (1 - lam) * x[index, :]
         if y.dtype == torch.float:  # For one-hot encoded labels
             y_mixed = lam * y + (1 - lam) * y[index]
@@ -331,6 +353,7 @@ class MixUpTransform(Transform):
             y_mixed = lam * y + (1 - lam) * y[index]
 
         return x_mixed, y_mixed
+
 
 
 class outsidersCustomCallback(TrackerCallback):
