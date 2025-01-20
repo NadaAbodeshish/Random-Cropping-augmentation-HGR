@@ -137,6 +137,12 @@ class e2eTunerImageTuples(fastuple):
         label = tuple([ord(c) for c in format(fns[0].parent.parent.name, "32")])
         return cls((imgs, label))
 
+    def size(self):
+        """Return the size of the first image in the batch."""
+        if len(self[0]) > 0 and isinstance(self[0][0], Tensor):
+            return self[0][0].size()
+        raise ValueError("Images are not tensors or are empty")
+
     def show(self, ctx=None, **kwargs):
         imgs = list(self[0])  # Unpack images
         
@@ -156,7 +162,7 @@ class e2eTunerImageTuples(fastuple):
 
         # Concatenate images for display
         return show_image(torch.cat(imgs, dim=2), figsize=[2.5 * len(imgs)] * 2, ctx=ctx, **kwargs)
-        
+
 
 def e2eTunerImageTupleBlock():
     return TransformBlock(type_tfms=e2eTunerImageTuples.create, batch_tfms=IntToFloatTensor)
@@ -392,6 +398,7 @@ def FitFlatCosine(learn, i_tag, i_eps, i_pct_start, e_epochs_lr_accuracy, finetu
     return (learn, oCCb.e_epochs, e_lr, oCCb.e_accuracy)
 # -----------------------------------------------
 
+
 class CutMix(Callback):
     """Applies the CutMix augmentation during training."""
     def __init__(self, alpha=1.0):
@@ -404,13 +411,11 @@ class CutMix(Callback):
         # Extract images and labels
         x, y = self.xb[0], self.yb[0]
         print(f"Debug: Type of xb[0]: {type(self.xb[0])}")
-        if isinstance(self.xb[0], e2eTunerImageTuples):
-            print(f"Debug: e2eTunerImageTuples contents: {self.xb[0]}")
-        else:
-            print(f"Debug: Tensor contents: {self.xb[0].shape}")
+
         if isinstance(x, e2eTunerImageTuples):
-            # Extract and stack images from the custom structure
-            images = torch.stack([tensor(img).float() for img in x[0]])
+            # Unpack images and convert to tensor
+            images = torch.stack(x[0])  # Unpack and stack images
+            print(f"Debug: Extracted images shape: {images.shape}, dtype: {images.dtype}")
         else:
             images = x
 
@@ -439,7 +444,8 @@ class CutMix(Callback):
 
         # Rewrap into e2eTunerImageTuples if necessary
         if isinstance(x, e2eTunerImageTuples):
-            self.learn.xb = (e2eTunerImageTuples.create([images]),)
+            self.learn.xb = (e2eTunerImageTuples((images, x[1])),)  # Rewrap images and original labels
+            print(f"Debug: Rewrapped xb type: {type(self.learn.xb[0])}")
         else:
             self.learn.xb = (images,)
 
