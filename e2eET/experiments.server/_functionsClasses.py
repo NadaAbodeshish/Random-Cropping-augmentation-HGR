@@ -132,26 +132,29 @@ def ImageTupleBlock():
 class e2eTunerImageTuples(fastuple):
     @classmethod
     def create(cls, fns): 
-        imgs = tuple(PILImage.create(f) for f in fns)
+        # Convert images to tensors directly
+        imgs = tuple(tensor(PILImage.create(f)).permute(2, 0, 1) for f in fns)
         label = tuple([ord(c) for c in format(fns[0].parent.parent.name, "32")])
-        return cls(tuple((imgs, label)))
+        return cls((imgs, label))
 
     def show(self, ctx=None, **kwargs):
-        imgs = list(self[0])
+        imgs = list(self[0])  # Unpack images
         
+        # Ensure all images are tensors of the same shape
         for i in imgs:
-            if (not isinstance(i, Tensor)) or (i.shape != imgs[0].shape):
-                imgs = [i.resize(imgs[0].size) for i in imgs]
-                imgs = [tensor(i).permute(2, 0, 1) for i in imgs]
-                break
+            if not isinstance(i, Tensor) or (i.shape != imgs[0].shape):
+                raise ValueError("All images must be tensors of the same shape.")
 
+        # Create separator line for visualization
         line = imgs[0].new_zeros(imgs[0].shape[0], imgs[0].shape[1], 5)
         line[:] = 255
 
+        # Insert separator between images
         for idx in range(len(imgs)):
             ins_idx = (idx * 2) + 1
             imgs.insert(ins_idx, line) if ins_idx < len(imgs) else None
 
+        # Concatenate images for display
         return show_image(torch.cat(imgs, dim=2), figsize=[2.5 * len(imgs)] * 2, ctx=ctx, **kwargs)
 
 def e2eTunerImageTupleBlock():
