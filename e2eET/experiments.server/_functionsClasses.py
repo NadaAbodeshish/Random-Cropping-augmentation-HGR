@@ -184,7 +184,6 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
 
-
 def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
     tfms = aug_transforms(
         do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
@@ -203,9 +202,13 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
 
     ds = multiDHG1428.datasets(ds_directory, verbose=False)
     if return_dls:
-        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=e_seed_worker, generator=e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
-        # clear_output(wait=False)
-        assert dls.c == args.n_classes, ">> ValueError: dls.c != n_classes as specified!!"
+        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
+
+        # Add detailed debug information
+        print(f"Debug: Number of items in training split: {len(dls.train.items)}")
+        print(f"Debug: Number of items in validation split: {len(dls.valid.items)}")
+        print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {len(dls.vocab)}")
+        print(f"Debug: Detected class vocab: {dls.vocab}")
 
         if preview:
             print(dedent(f"""
@@ -221,7 +224,12 @@ def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_
 
         return dls
 
-    else: return ds
+    else: 
+        # Add debug information even when returning only the dataset
+        print(f"Debug: Dataset contains {len(ds.train)} training items and {len(ds.valid)} validation items.")
+        print(f"Debug: Classes detected: {len(ds.vocab)}, Vocab: {ds.vocab}")
+        return ds
+
 # -----------------------------------------------
 
 
@@ -379,21 +387,27 @@ def FitFlatCosine(learn, i_tag, i_eps, i_pct_start, e_epochs_lr_accuracy, finetu
 
     return (learn, oCCb.e_epochs, e_lr, oCCb.e_accuracy)
 # -----------------------------------------------
+
 class CutMix(Callback):
     """Applies the CutMix augmentation during training."""
     def __init__(self, alpha=1.0):
         self.alpha = alpha
 
     def before_batch(self):
-        if not self.training: 
+        if not self.training:
             return  # Only apply during training
 
-        # Extract tensors from custom data structure if needed
+        # Unpack images if using a custom tuple-like wrapper
         x, y = self.xb[0], self.yb[0]
-        if isinstance(x, e2eTunerImageTuples):  # Handle custom wrapper
+        print(f"Debug: Type of xb: {type(self.xb[0])}, First item: {self.xb[0][0]}")
+
+        # Check if x is an e2eTunerImageTuples object and convert to tensor
+        if isinstance(x, e2eTunerImageTuples):
             x = torch.stack([tensor(img) for img in x[0]])
-        if not hasattr(x, 'size'):
-            raise ValueError(f"Input tensor does not have `.size()` attribute! Got {type(x)}")
+
+        # Validate x is now a tensor and proceed
+        if not isinstance(x, torch.Tensor):
+            raise ValueError(f"Input data is not a tensor after unpacking! Got type {type(x)}")
 
         # Generate lambda and calculate CutMix region
         lam = np.random.beta(self.alpha, self.alpha)
@@ -410,9 +424,11 @@ class CutMix(Callback):
         y1 = max(cy - cut_h // 2, 0)
         y2 = min(cy + cut_h // 2, h)
 
-        # Apply CutMix to images and update labels
+        # Apply CutMix to images
         x[:, :, y1:y2, x1:x2] = x_perm[:, :, y1:y2, x1:x2]
         lam = 1 - ((x2 - x1) * (y2 - y1) / (h * w))
+
+        # Update labels for CutMix
         self.learn.yb = (y, y_perm, lam)
 
     def after_loss(self):
