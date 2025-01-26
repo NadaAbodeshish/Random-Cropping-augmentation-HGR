@@ -18,13 +18,14 @@ import torch
 import torch.nn as NN
 import numpy as np
 from fastai.vision.all import *
+from fastai.vision.all import aug_transforms, Resize, Normalize, imagenet_stats, GrandparentSplitter
 from fastai.torch_core import defaults
 from torch.utils.tensorboard.writer import SummaryWriter
 from IPython.display import clear_output
 # ---
 from __main__ import args, deets
 from _helperFunctions import *
-
+from pathlib import Path
 
 __all__ = [
     "multiOrientationDataLoader",
@@ -132,47 +133,30 @@ def ImageTupleBlock():
 class e2eTunerImageTuples(fastuple):
     @classmethod
     def create(cls, fns): 
-        # Convert images to float tensors
-        imgs = tuple(tensor(PILImage.create(f)).permute(2, 0, 1).float() for f in fns)
+        imgs = tuple(PILImage.create(f) for f in fns)
         label = tuple([ord(c) for c in format(fns[0].parent.parent.name, "32")])
-        return cls((imgs, label))
-
-    def size(self):
-        """Return the size of the first image in the batch."""
-        if len(self[0]) > 0 and isinstance(self[0][0], Tensor):
-            return self[0][0].size()
-        raise ValueError("Images are not tensors or are empty")
+        return cls(tuple((imgs, label)))
 
     def show(self, ctx=None, **kwargs):
-        imgs = list(self[0])  # Unpack images
+        imgs = list(self[0])
         
-        # Ensure all images are tensors of the same shape
         for i in imgs:
-            if not isinstance(i, Tensor) or (i.shape != imgs[0].shape):
-                raise ValueError("All images must be tensors of the same shape.")
+            if (not isinstance(i, Tensor)) or (i.shape != imgs[0].shape):
+                imgs = [i.resize(imgs[0].size) for i in imgs]
+                imgs = [tensor(i).permute(2, 0, 1) for i in imgs]
+                break
 
-        # Create separator line for visualization
         line = imgs[0].new_zeros(imgs[0].shape[0], imgs[0].shape[1], 5)
         line[:] = 255
 
-        # Insert separator between images
         for idx in range(len(imgs)):
             ins_idx = (idx * 2) + 1
             imgs.insert(ins_idx, line) if ins_idx < len(imgs) else None
 
-        # Concatenate images for display
         return show_image(torch.cat(imgs, dim=2), figsize=[2.5 * len(imgs)] * 2, ctx=ctx, **kwargs)
-
 
 def e2eTunerImageTupleBlock():
     return TransformBlock(type_tfms=e2eTunerImageTuples.create, batch_tfms=IntToFloatTensor)
-
-def get_gesture_sequences(path):
-    files = get_image_files(path)
-    return L(dict.fromkeys([f.parent for f in files]))
-
-def get_orientation_images(o):
-    return [(o / f"{_vo}.png") for _vo in args.mv_orientations]
 
 def get_mVOs_img_size(subset):
     assert "fastai.data.core.TfmdDL" in str(type(subset)), "train/valid dls subset should be provided!"
@@ -194,52 +178,95 @@ def show_batch(x:ImageTuples, y, samples, ctxs=None, max_n=12, nrows=3, ncols=2,
     ctxs = show_batch[object](x, y, samples, ctxs=ctxs, max_n=max_n, **kwargs)  # type:ignore
     return ctxs
 
-def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, ds_valid="valid", e2eTunerMode=False, preview=False, _e_seed_worker=None, _e_repr_gen=None):
-    tfms = aug_transforms(
-        do_flip=True, flip_vert=False, max_rotate=25.0, max_zoom=1.5, 
-        max_lighting=0.5, max_warp=0.1, p_affine=0.75, p_lighting=0.75,
-    )
+def is_augmented_image(file_name):
+    """Check if the file matches one of the required orientation patterns with augmentation."""
+    for orientation in args.mv_orientations:  # Using args.mv_orientations for orientation names
+        if re.match(fr"{orientation}_aug_\d+\.png$", file_name):
+            return True
+    return False
 
+def get_gesture_sequences(path, orientations, is_train=True):
+    """
+    Gather gesture sequences from the dataset directory.
+    - For training (`is_train=True`): includes all files with `_aug` suffix.
+    - For validation (`is_train=False`): excludes `_aug` files.
+    """
+    files = get_image_files(path)
+    
+    if is_train:
+        # For training: include all files with orientations and `_aug` suffix
+        files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" in f.stem]
+    else:
+        # For validation: exclude files with `_aug` suffix
+        files = [f for f in files if any(orientation in f.name for orientation in orientations) and "_aug" not in f.stem]
+    
+    return L(dict.fromkeys([f.parent for f in files]))
+
+def get_orientation_images(o):
+    """
+    Return paths for each orientation, including `_aug*` variations if available.
+    """
+    orientation_images = []
+    for orientation in args.mv_orientations:
+        # Search for files with and without `_aug*` suffix for each orientation
+        possible_aug_files = sorted(o.glob(f"{orientation}_aug*.png"))
+        
+        # Use the augmented file if it exists, otherwise use the default
+        if possible_aug_files:
+            orientation_images.append(possible_aug_files[0])  #
+        else:
+            orientation_images.append(o / f"{orientation}.png")
+    
+    return orientation_images
+
+
+def multiOrientationDataLoader(ds_directory, bs, img_size, shuffle=True, return_dls=True, e2eTunerMode=False, preview=False):
+    orientations = args.mv_orientations  
+    n_classes = args.n_classes  
+
+    ds_directory = Path(ds_directory)
+
+    # print(f"Debug: Dataset directory is {ds_directory}")
+    # print(f"Debug: Using orientations: {orientations}")
+
+    # Load sequences for train and validation
+    train_sequences = get_gesture_sequences(ds_directory / "train", orientations, is_train=True)
+    valid_sequences = get_gesture_sequences(ds_directory / "valid", orientations, is_train=False)
+
+
+    if len(train_sequences) == 0 or len(valid_sequences) == 0:
+        raise ValueError("Error: No images found in one of the dataset splits. Check dataset structure.")
+
+    # DataBlock definition with get_items properly set
     multiDHG1428 = DataBlock(
         blocks=((e2eTunerImageTupleBlock if e2eTunerMode else ImageTupleBlock), CategoryBlock),
-        get_items=get_gesture_sequences,
+        get_items=lambda p: train_sequences + valid_sequences,
         get_x=get_orientation_images,
         get_y=parent_label,
-        splitter=GrandparentSplitter(train_name="train", valid_name=ds_valid),
+        splitter=GrandparentSplitter(train_name="train", valid_name="valid"),
         item_tfms=Resize(size=img_size, method=ResizeMethod.Squish),
-        batch_tfms=[*tfms, Normalize.from_stats(*imagenet_stats)],
+        batch_tfms=[*aug_transforms(), Normalize.from_stats(*imagenet_stats)],
     )
 
-    ds = multiDHG1428.datasets(ds_directory, verbose=False)
+    ds = multiDHG1428.datasets(ds_directory)
+    print(f"Debug: Number of items in training split: {len(ds.train)}")
+    print(f"Debug: Number of items in validation split: {len(ds.valid)}")
+
+    if len(ds.train) == 0 or len(ds.valid) == 0:
+        raise ValueError("Error: One of the dataset splits is empty. Check directory structure.")
+
     if return_dls:
-        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, worker_init_fn=_e_seed_worker, generator=_e_repr_gen, device=defaults.device, shuffle=shuffle, num_workers=0)
-
-        # Add detailed debug information
-        print(f"Debug: Number of items in training split: {len(dls.train.items)}")
-        print(f"Debug: Number of items in validation split: {len(dls.valid.items)}")
-        print(f"Debug: Expected classes: {args.n_classes}, Detected classes: {len(dls.vocab)}")
+        dls = multiDHG1428.dataloaders(ds_directory, bs=bs, shuffle=shuffle, num_workers=0)
+        print(f"Debug: Expected classes: {n_classes}, Detected classes: {dls.c}")
         print(f"Debug: Detected class vocab: {dls.vocab}")
-
+        assert dls.c == n_classes, f">> ValueError: Detected {dls.c} classes, expected {n_classes}. Check class handling or dataset structure."
+        
         if preview:
-            print(dedent(f"""
-            Dataloader has been created successfully...
-            The dataloader has {len(dls.vocab)} ({dls.c}) classes: {dls.vocab}
-            Training set [len={len(dls.train.items)}, img_sz={get_mVOs_img_size(dls.train)}] loaded on device: {dls.train.device}
-            Validation set [len={len(dls.valid.items)}, img_sz={get_mVOs_img_size(dls.valid)}] loaded on device: {dls.valid.device}
-            Previewing loaded data [1] and applied transforms [2]...
-            """))
-            dls.show_batch(nrows=1, ncols=4, unique=False, figsize=(12, 12))
             dls.show_batch(nrows=1, ncols=4, unique=True, figsize=(12, 12))
-        else: clear_output(wait=False)
-
+        
         return dls
-
-    else: 
-        # Add debug information even when returning only the dataset
-        print(f"Debug: Dataset contains {len(ds.train)} training items and {len(ds.valid)} validation items.")
-        print(f"Debug: Classes detected: {len(ds.vocab)}, Vocab: {ds.vocab}")
+    else:
         return ds
-
 # -----------------------------------------------
 
 
@@ -334,18 +361,27 @@ class outsidersCustomCallback(TrackerCallback):
 # -----------------------------------------------
 
 
-def i_LRFinder(learn, show_plot=False, n_attempts=0):
-    try: return learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
+import traceback
 
+def i_LRFinder(learn, show_plot=False, n_attempts=0):
+    try:
+        result = learn.lr_find(suggest_funcs=(valley, slide), show_plot=show_plot)
+        return result
     except Exception as e:
         n_attempts += 1
         print(f"@{n_attempts=}: i_LRFinder Exception:: {e}!")
-        if "CUDA" in str(e):
-            Logger(f"CUDA RuntimeError - {e}!") ; os._exit(os.EX_OK)
-        else:  # "no elements" in str(e) or "out of bounds" in str(e)  or "numerical gradient" in str(e)
-            if n_attempts == 69:
-                print(f"i_LRFinder Exception::", traceback.format_exc())
-                Logger(f"i_LRFinder Exception:: {e}!") ; os._exit(os.EX_OK)
+        
+        # Handle CUDA or file errors
+        if "CUDA" in str(e) or "FileNotFoundError" in str(e):
+            print(f"Critical error encountered. Exiting: {e}")
+            os._exit(os.EX_OK)
+        elif "too many values to unpack" in str(e):
+            print("Error unpacking values from lr_find result.")
+            return None  # Explicitly return None for getLR to handle
+        else:
+            if n_attempts >= 69:
+                print("Max attempts reached:", traceback.format_exc())
+                os._exit(os.EX_OK)
             return i_LRFinder(learn, show_plot, n_attempts)
 
 def i_LRHistorical(n_classes, i_tag):
@@ -368,9 +404,18 @@ def i_LRHistorical(n_classes, i_tag):
     return maxLearningRates[n_classes][i_tag]
 
 def getLR(learn, i_tag, show_plot=False):
-    if args.lrs_type == "lrHistorical": return i_LRHistorical(args.n_classes, i_tag)
-    elif args.lrs_type == "lrFinder":   return i_LRFinder(learn, show_plot=show_plot).valley
-    else:                               return defaults.lr
+    if args.lrs_type == "lrHistorical":
+        return i_LRHistorical(args.n_classes, i_tag)
+    elif args.lrs_type == "lrFinder":
+        # Attempt to get the learning rate using i_LRFinder
+        lr_finder_result = i_LRFinder(learn, show_plot=show_plot)
+        if lr_finder_result is None:
+            print("Warning: LR Finder failed. Using default learning rate.")
+            return defaults.lr  # Fallback to a default learning rate
+        return lr_finder_result.valley
+    else:
+        return defaults.lr  # Default learning rate if no method is specified
+
 
 def isFrozen(learn):
     for child in learn.model.children():
@@ -397,68 +442,7 @@ def FitFlatCosine(learn, i_tag, i_eps, i_pct_start, e_epochs_lr_accuracy, finetu
 
     return (learn, oCCb.e_epochs, e_lr, oCCb.e_accuracy)
 # -----------------------------------------------
-class CutMix(Callback):
-    """Applies the CutMix augmentation during training."""
-    def __init__(self, alpha=1.0):
-        self.alpha = alpha
 
-    def before_batch(self):
-        if not self.training:
-            return  # Only apply during training
-
-        # Extract images and labels
-        x, y = self.xb[0], self.yb[0]
-        print(f"Debug: Type of xb[0]: {type(self.xb[0])}")
-
-        # Handle e2eTunerImageTuples
-        if isinstance(x, e2eTunerImageTuples):
-            # Extract and stack image tensors
-            images = torch.stack([img.to(self.learn.dls.device) for img in x[0]])
-            print(f"Debug: Extracted images shape: {images.shape}, dtype: {images.dtype}, device: {images.device}")
-        else:
-            images = x.to(self.learn.dls.device)
-            print(f"Debug: Tensor input shape: {images.shape}, device: {images.device}")
-
-        # Ensure images is a tensor
-        if not isinstance(images, torch.Tensor):
-            raise ValueError(f"CutMix expected a Tensor, but got {type(images)}")
-
-        # Generate lambda and calculate CutMix region
-        lam = np.random.beta(self.alpha, self.alpha)
-        batch_size, _, h, w = images.size()
-        perm = torch.randperm(batch_size).to(images.device)
-        images_perm, y_perm = images[perm], y[perm]
-
-        cut_rat = np.sqrt(1.0 - lam)
-        cut_w, cut_h = int(w * cut_rat), int(h * cut_rat)
-
-        cx, cy = np.random.randint(w), np.random.randint(h)
-        x1 = max(cx - cut_w // 2, 0)
-        x2 = min(cx + cut_w // 2, w)
-        y1 = max(cy - cut_h // 2, 0)
-        y2 = min(cy + cut_h // 2, h)
-
-        # Apply CutMix augmentation
-        images[:, :, y1:y2, x1:x2] = images_perm[:, :, y1:y2, x1:x2]
-        lam = 1 - ((x2 - x1) * (y2 - y1) / (h * w))
-
-        # Rewrap into e2eTunerImageTuples if necessary
-        if isinstance(x, e2eTunerImageTuples):
-            self.learn.xb = (e2eTunerImageTuples.create((images, x[1])),)  # Rewrap images and original labels
-            print(f"Debug: Rewrapped xb type: {type(self.learn.xb[0])}")
-        else:
-            self.learn.xb = (images,)
-
-        # Update labels for CutMix
-        self.learn.yb = (y, y_perm, lam)
-
-    def after_loss(self):
-        y1, y2, lam = self.yb
-        self.learn.loss_grad = (
-            lam * self.loss_func(self.pred, y1) +
-            (1 - lam) * self.loss_func(self.pred, y2)
-        )
-        self.learn.loss = self.learn.loss_grad.clone()    
 
 class multiOrientationModel(Module):
     def __init__(self, encoder, head, nf, debug=False):
@@ -639,32 +623,50 @@ class end2endTunerModel(Module):
         if self.debug: print(f"{self= }", end=f"\n{'-'*50}\n\n")
 
     def forward(self, Xy, y=None):
-        if y is not None: X, y = Xy, y  # [NOTE] modified for tensorboard SummaryWriter
-        else:             X, y = Xy     # [NOTE] modified for tensorboard SummaryWriter
+        # Verify Xy contains exactly two elements
+        if not isinstance(Xy, (list, tuple)) or len(Xy) != 2:
+            raise ValueError(f"Expected Xy to contain exactly two elements, but got {type(Xy)} with length {len(Xy)}")
+        
+        # Unpack X and y as expected
+        if y is not None:
+            X, y = Xy, y
+        else:
+            X, y = Xy
 
+        # Debugging information to inspect X and y
         if self.debug:
             print(f"\n{type(X)= } | {len(X)= } | {explode_types(X)= }")
-            for xi in X: print(f"{explode_types(xi)= } | {xi.shape= }")
+            for xi in X:
+                print(f"{explode_types(xi)= } | {xi.shape= }")
 
+        # Multi-view features extraction
         mvo_ftrs = [self.multiVOsBody(xi) for xi in X]
         mvo_ftrs = [self.multiVOsHead(xi) for xi in mvo_ftrs]
 
+        # Debugging: Check shapes after feature extraction
         if self.debug:
-            for idx in range(len(X)): print(f">> {X[idx].shape= } ~~ {mvo_ftrs[idx].shape= }")
+            for idx in range(len(X)):
+                print(f">> {X[idx].shape= } ~~ {mvo_ftrs[idx].shape= }")
 
+        # Concatenate multi-view predictions
         mvo_preds = torch.cat([torch.unsqueeze(xi.detach(), dim=1) for xi in mvo_ftrs], dim=1)
+        
+        # Decode targets and tune images for the next layer
         tnr_y = self.decode_batch_targs(y)
         tnr_X = self.batch_tuner_images(mvo_preds, tnr_y)
-        
+
+        # Further processing with tuner layers
         tnr_ftrs = self.tunerBody(tnr_X)
         tnr_ftrs = self.tunerHead(tnr_ftrs)
 
+        # Final debugging output
         if self.debug:
             print(f">> {tnr_X.shape= } | {tnr_y.shape= }")
             print(f">> {mvo_preds.shape= } | {tnr_ftrs.shape= }")
-            self.debug = False #; os._exit(os.EX_OK)
+            self.debug = False  # Disable debug mode after the first forward pass
 
         return [*mvo_ftrs, tnr_ftrs]
+
 
     def decode_batch_targs(self, yb):
         yb = torch.vstack(yb).moveaxis(0, -1).detach().cpu()
@@ -818,11 +820,4 @@ def generateModelGraph(model, dls, tag="e2eEnsembleTuner"):
     writer.close()
     print(f">> Model graph generated successfully @{m_tag= }")
     os._exit(os.EX_OK)
-# -----------------------------------------------
-import torch
-import random
-
-
-        
-
 # -----------------------------------------------

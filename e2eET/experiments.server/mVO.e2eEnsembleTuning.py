@@ -78,11 +78,10 @@ from _functionsClasses import *
 # [create.dls.model.learn]
 # ---------------------------
 # print(f"Debug: Dataset directory is {deets.ds_directory}")
-dls = multiOrientationDataLoader(deets.ds_directory, bs=args.bs, img_size=args.init_img_sz, e2eTunerMode=True, preview=True)
-# dls = multiOrientationDataLoader(
-#     deets.ds_directory, bs=args.bs, img_size=args.init_img_sz, 
-#     e2eTunerMode=True, preview=True
-# )
+dls = multiOrientationDataLoader(
+    deets.ds_directory, bs=args.bs, img_size=args.init_img_sz, 
+    e2eTunerMode=True, preview=True
+)
 
 model = end2endTunerModel(
     archMultiVOs=BaseArchitectures[args.mvo_architecture],
@@ -98,16 +97,8 @@ learn = Learner(
     dls, model,
     metrics=metrics, loss_func=loss_func,
     opt_func=Adam, splitter=model.splitter,
-    cbs=[CutMix(alpha=1.0)],  # Add CutMix here
     path=deets.learn_directory, model_dir="."
 )
-
-# learn = Learner(
-#     dls, model,
-#     metrics=metrics, loss_func=loss_func,
-#     opt_func=Adam, splitter=model.splitter,
-#     path=deets.learn_directory, model_dir="."
-# )
 
 # generateModelGraph(model, dls, tag=f"e2eT-{ds_name}")
 
